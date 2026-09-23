@@ -10,7 +10,14 @@ from dagster import AssetSelection, ScheduleDefinition, define_asset_job
 
 refresh_smard_job = define_asset_job(
     name="refresh_smard_job",
-    selection=AssetSelection.groups("smard", "redispatch"),
+    selection=AssetSelection.groups(
+        "smard_generation",
+        "smard_consumption",
+        "smard_price",
+        "smard_forecast",
+        "smard_capacity",
+        "redispatch",
+    ),
 )
 
 # 06:00 Europe/Berlin daily. SMARD/netztransparenz publish with a lag of a

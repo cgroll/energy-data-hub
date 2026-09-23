@@ -1,12 +1,19 @@
 """SMARD (Bundesnetzagentur) series as Dagster software-defined assets.
 
-One asset per series, all in the `smard` group -- gives each series its own
-node in the Asset Graph (a book that only needs `smard_load` shouldn't show
-a dependency on `smard_price_de_lu`).
+Full catalog (47 series), migrated 2026-09-23 from ~/research/smard-data
+(first commit 2025-04, predates this hub) to retire that repo -- see
+edh/smard.py's Variable docstring for the exact provenance. One asset per
+series, grouped by category (`smard_generation`, `smard_consumption`,
+`smard_price`, `smard_forecast`, `smard_capacity`) so a book that only
+needs `smard_load` doesn't show a dependency on `smard_price_at`.
 
 **Resolution:** hourly, always -- SMARD's `resolution="hour"` endpoint,
-hardcoded (see `edh/smard.py::download_series`). None of these series are
-downloaded at any other granularity anywhere in this hub.
+hardcoded (see `edh/smard.py::download_series`). smard-data used
+quarter-hour; deliberately not matched here for the migration -- hourly
+is what every current consumer of this hub actually needs, and the
+gap-check/watermark machinery below is hourly-shaped throughout.
+Revisit if a real quarter-hour need shows up (see BEST_PRACTICES.md-style
+"don't build it until something needs it").
 
 **Timestamps:** naive pandas timestamps that represent UTC, not
 Europe/Berlin wall-clock -- `edh/smard.py` parses SMARD's epoch-ms values
@@ -14,14 +21,28 @@ as UTC-aware, then strips the tz label (`tz_localize(None)`), by design
 (reproducible across machines, unlike `datetime.fromtimestamp()`). Treat
 the index as UTC when joining against anything else.
 
-**Units:** MW for generation/load/capacity, EUR/MWh for price -- verified
-by magnitude against known real-world figures (DE grid load ~31-82 GW
-range, DE solar capacity ~37-103 GW 2015-2026, EPEX's known -500 EUR/MWh
-price floor), not read off an explicit unit label on SMARD's site (a JS
-SPA, not scriptable) -- see conversation/commit history for the exact
-check. Re-verify directly against SMARD if exactness beyond
-order-of-magnitude ever matters (MW and MWh are numerically identical at
-hourly resolution regardless).
+**Region, verified empirically per category (2026-09-23), not assumed:**
+- `smard_generation`, `smard_consumption`, `smard_forecast`: `DE-LU`.
+  Confirmed to matter -- `DE` vs `DE-LU` give genuinely different values
+  for e.g. total load (~1% apart) and forecast_total; smard-data's
+  blanket use of `DE` for everything was a real inaccuracy for these,
+  not replicated here.
+- `smard_price`: `DE-LU`, though verified the region path segment is
+  actually irrelevant for these variable IDs (AT/DE-LU/DE all returned
+  identical values for e.g. `PRICE_AT`) -- `DE-LU` used purely for
+  consistency with `smard_price_de_lu`, not because it's required.
+- `smard_capacity`: `DE`, matching the pre-existing
+  `capacity_solar`/`capacity_wind_*` convention (this hub cares about
+  capacity physically installed in Germany, not the DE-LU market area --
+  confirmed `DE` vs `DE-LU` differ here too, e.g. hydro capacity,
+  since Luxembourg has some of its own).
+
+**Units:** MW throughout except `smard_price_*` (EUR/MWh) -- verified by
+magnitude for the original 8 series against known real-world figures
+(see git history); the 39 series added in the smard-data migration
+inherit the same unit by category by construction (same kind of physical
+quantity, same API), not independently re-verified one by one. Flag if
+any single one looks implausible.
 
 **Load pattern: `data_derived_watermark`** (see docs/load_patterns.md
 and BEST_PRACTICES.md). Idempotent, unpartitioned: each run reads its
@@ -29,11 +50,12 @@ own current output file back, resumes from
 `existing.index.max() + 1h` (or SMARD's earliest available timestamp on
 a first run), and appends only what's missing -- always catching up to
 "now", never to a fixed partition boundary. Running it twice in a row is
-safe: the second run just fetches 0 new rows. This is a deliberate
-choice over Dagster's partitioned-asset pattern -- there's no need to
-track per-day/per-week materialization status or support
-partition-scoped backfills here; the series' own timestamp index is
-already the single source of truth for "what's missing".
+safe: the second run just fetches 0 new rows. A series SMARD has stopped
+publishing (e.g. `smard_generation_nuclear` post phase-out) behaves
+correctly under this scheme too -- new_data comes back empty, the
+watermark simply stops advancing, not an error and not a gap (the
+expected range in hourly_gap_check only ever extends to the last real
+timestamp).
 
 **Overwrite-in-place, no version history:** each asset owns exactly one
 output file that gets read, appended to, and rewritten every run -- past
@@ -63,23 +85,64 @@ from edh.paths import smard_file
 from edh.smard import BASE_URL, DEFAULT_START_DATE, Variable, download_series
 from edh.known_gaps import KNOWN_GAPS
 
-# name -> (SMARD variable, region, human description, unit). Region
-# "DE-LU" for the market-area series (generation, load, price); "DE" for
-# SMARD's own national capacity series -- see
-# pecd-power-validity-DE/pipeline/04_download_smard_capacities.py.
-SMARD_SERIES: dict[str, tuple[Variable, str, str, str]] = {
-    "smard_generation_solar": (Variable.SOLAR, "DE-LU", "Solar (PV) generation", "MW"),
-    "smard_generation_wind_onshore": (Variable.WIND_ONSHORE, "DE-LU", "Onshore wind generation", "MW"),
-    "smard_generation_wind_offshore": (Variable.WIND_OFFSHORE, "DE-LU", "Offshore wind generation", "MW"),
-    "smard_load": (Variable.TOTAL_LOAD, "DE-LU", "Total grid load", "MW"),
-    "smard_price_de_lu": (Variable.PRICE_DE_LU, "DE-LU", "Day-ahead auction price", "EUR/MWh"),
-    "smard_capacity_solar": (Variable.CAPACITY_SOLAR, "DE", "SMARD's own installed solar capacity", "MW"),
-    "smard_capacity_wind_onshore": (Variable.CAPACITY_WIND_ONSHORE, "DE", "SMARD's own installed onshore wind capacity", "MW"),
-    "smard_capacity_wind_offshore": (Variable.CAPACITY_WIND_OFFSHORE, "DE", "SMARD's own installed offshore wind capacity", "MW"),
+# asset_name -> (variable, region, group, human description, unit)
+SMARD_SERIES: dict[str, tuple[Variable, str, str, str, str]] = {
+    # --- Generation, by fuel type (DE-LU) ---------------------------------
+    "smard_generation_solar": (Variable.SOLAR, "DE-LU", "smard_generation", "Solar (PV) generation", "MW"),
+    "smard_generation_wind_onshore": (Variable.WIND_ONSHORE, "DE-LU", "smard_generation", "Onshore wind generation", "MW"),
+    "smard_generation_wind_offshore": (Variable.WIND_OFFSHORE, "DE-LU", "smard_generation", "Offshore wind generation", "MW"),
+    "smard_generation_brown_coal": (Variable.BROWN_COAL, "DE-LU", "smard_generation", "Brown coal (lignite) generation", "MW"),
+    "smard_generation_hard_coal": (Variable.HARD_COAL, "DE-LU", "smard_generation", "Hard coal generation", "MW"),
+    "smard_generation_nuclear": (Variable.NUCLEAR, "DE-LU", "smard_generation", "Nuclear generation (zero since Germany's 2023 phase-out)", "MW"),
+    "smard_generation_natural_gas": (Variable.NATURAL_GAS, "DE-LU", "smard_generation", "Natural gas generation", "MW"),
+    "smard_generation_hydro": (Variable.HYDRO, "DE-LU", "smard_generation", "Hydro generation", "MW"),
+    "smard_generation_biomass": (Variable.BIOMASS, "DE-LU", "smard_generation", "Biomass generation", "MW"),
+    "smard_generation_pumped_storage": (Variable.PUMPED_STORAGE, "DE-LU", "smard_generation", "Pumped-storage generation (discharge)", "MW"),
+    "smard_generation_other_conventional": (Variable.OTHER_CONVENTIONAL, "DE-LU", "smard_generation", "Other conventional generation", "MW"),
+    "smard_generation_other_renewable": (Variable.OTHER_RENEWABLE, "DE-LU", "smard_generation", "Other renewable generation", "MW"),
+    # --- Consumption (DE-LU) -----------------------------------------------
+    "smard_load": (Variable.TOTAL_LOAD, "DE-LU", "smard_consumption", "Total grid load", "MW"),
+    "smard_consumption_residual_load": (Variable.RESIDUAL_LOAD, "DE-LU", "smard_consumption", "Residual load (load minus renewable generation)", "MW"),
+    "smard_consumption_pumped_storage_load": (Variable.PUMPED_STORAGE_LOAD, "DE-LU", "smard_consumption", "Pumped-storage load (charging)", "MW"),
+    # --- Day-ahead prices (region verified irrelevant -- see module docstring) ---
+    "smard_price_de_lu": (Variable.PRICE_DE_LU, "DE-LU", "smard_price", "Day-ahead auction price, DE-LU", "EUR/MWh"),
+    "smard_price_de_lu_neighbors": (Variable.PRICE_DE_LU_NEIGHBORS, "DE-LU", "smard_price", "Day-ahead price, DE-LU neighboring-zone comparison series", "EUR/MWh"),
+    "smard_price_at": (Variable.PRICE_AT, "DE-LU", "smard_price", "Day-ahead auction price, Austria", "EUR/MWh"),
+    "smard_price_be": (Variable.PRICE_BE, "DE-LU", "smard_price", "Day-ahead auction price, Belgium", "EUR/MWh"),
+    "smard_price_ch": (Variable.PRICE_CH, "DE-LU", "smard_price", "Day-ahead auction price, Switzerland", "EUR/MWh"),
+    "smard_price_cz": (Variable.PRICE_CZ, "DE-LU", "smard_price", "Day-ahead auction price, Czechia", "EUR/MWh"),
+    "smard_price_dk1": (Variable.PRICE_DK1, "DE-LU", "smard_price", "Day-ahead auction price, Denmark DK1", "EUR/MWh"),
+    "smard_price_dk2": (Variable.PRICE_DK2, "DE-LU", "smard_price", "Day-ahead auction price, Denmark DK2", "EUR/MWh"),
+    "smard_price_fr": (Variable.PRICE_FR, "DE-LU", "smard_price", "Day-ahead auction price, France", "EUR/MWh"),
+    "smard_price_hu": (Variable.PRICE_HU, "DE-LU", "smard_price", "Day-ahead auction price, Hungary", "EUR/MWh"),
+    "smard_price_it_north": (Variable.PRICE_IT_NORTH, "DE-LU", "smard_price", "Day-ahead auction price, Italy North", "EUR/MWh"),
+    "smard_price_nl": (Variable.PRICE_NL, "DE-LU", "smard_price", "Day-ahead auction price, Netherlands", "EUR/MWh"),
+    "smard_price_no2": (Variable.PRICE_NO2, "DE-LU", "smard_price", "Day-ahead auction price, Norway NO2", "EUR/MWh"),
+    "smard_price_pl": (Variable.PRICE_PL, "DE-LU", "smard_price", "Day-ahead auction price, Poland", "EUR/MWh"),
+    "smard_price_pl2": (Variable.PRICE_PL2, "DE-LU", "smard_price", "Day-ahead auction price, Poland (2nd series)", "EUR/MWh"),
+    "smard_price_si": (Variable.PRICE_SI, "DE-LU", "smard_price", "Day-ahead auction price, Slovenia", "EUR/MWh"),
+    # --- Forecasts (DE-LU) ---------------------------------------------------
+    "smard_forecast_total": (Variable.FORECAST_TOTAL, "DE-LU", "smard_forecast", "Total generation forecast", "MW"),
+    "smard_forecast_onshore": (Variable.FORECAST_ONSHORE, "DE-LU", "smard_forecast", "Onshore wind generation forecast", "MW"),
+    "smard_forecast_offshore": (Variable.FORECAST_OFFSHORE, "DE-LU", "smard_forecast", "Offshore wind generation forecast", "MW"),
+    "smard_forecast_solar": (Variable.FORECAST_SOLAR, "DE-LU", "smard_forecast", "Solar generation forecast", "MW"),
+    "smard_forecast_wind_solar": (Variable.FORECAST_WIND_SOLAR, "DE-LU", "smard_forecast", "Combined wind+solar generation forecast", "MW"),
+    "smard_forecast_other": (Variable.FORECAST_OTHER, "DE-LU", "smard_forecast", "Other generation forecast", "MW"),
+    # --- Installed capacity, by fuel type (DE) ------------------------------
+    "smard_capacity_solar": (Variable.CAPACITY_SOLAR, "DE", "smard_capacity", "SMARD's own installed solar capacity", "MW"),
+    "smard_capacity_wind_onshore": (Variable.CAPACITY_WIND_ONSHORE, "DE", "smard_capacity", "SMARD's own installed onshore wind capacity", "MW"),
+    "smard_capacity_wind_offshore": (Variable.CAPACITY_WIND_OFFSHORE, "DE", "smard_capacity", "SMARD's own installed offshore wind capacity", "MW"),
+    "smard_capacity_brown_coal": (Variable.CAPACITY_BROWN_COAL, "DE", "smard_capacity", "Installed brown coal (lignite) capacity", "MW"),
+    "smard_capacity_hard_coal": (Variable.CAPACITY_HARD_COAL, "DE", "smard_capacity", "Installed hard coal capacity", "MW"),
+    "smard_capacity_natural_gas": (Variable.CAPACITY_NATURAL_GAS, "DE", "smard_capacity", "Installed natural gas capacity", "MW"),
+    "smard_capacity_hydro": (Variable.CAPACITY_HYDRO, "DE", "smard_capacity", "Installed hydro capacity", "MW"),
+    "smard_capacity_biomass": (Variable.CAPACITY_BIOMASS, "DE", "smard_capacity", "Installed biomass capacity", "MW"),
+    "smard_capacity_pumped_storage": (Variable.CAPACITY_PUMPED_STORAGE, "DE", "smard_capacity", "Installed pumped-storage capacity", "MW"),
+    "smard_capacity_other_renewable": (Variable.CAPACITY_OTHER_RENEWABLE, "DE", "smard_capacity", "Installed other-renewable capacity", "MW"),
 }
 
 
-def _make_smard_asset(asset_name: str, variable: Variable, region: str, human_name: str, unit: str):
+def _make_smard_asset(asset_name: str, variable: Variable, region: str, group: str, human_name: str, unit: str):
     source_url = f"{BASE_URL}/chart_data/{variable.value}/{region}/index_hour.json"
     known_gaps = KNOWN_GAPS.get(asset_name)
 
@@ -108,15 +171,14 @@ def _make_smard_asset(asset_name: str, variable: Variable, region: str, human_na
 
     @asset(
         name=asset_name,
-        group_name="smard",
+        group_name=group,
         kinds={"api", "parquet"},
         tags={"load_pattern": "data_derived_watermark"},
         description=(
-            f"{human_name} ({region} market area), hourly, from SMARD "
-            f"(Bundesnetzagentur). Idempotent, unpartitioned: each run "
-            f"fills in whatever hours are missing since the last "
-            f"materialization, from SMARD's earliest available data "
-            f"through now -- see module docstring for the full "
+            f"{human_name} ({region}), hourly, from SMARD (Bundesnetzagentur). "
+            f"Idempotent, unpartitioned: each run fills in whatever hours are "
+            f"missing since the last materialization, from SMARD's earliest "
+            f"available data through now -- see module docstring for the full "
             f"incremental-append and no-partition rationale."
             + (" Has known, allowlisted data gaps -- see 'known_data_issues' metadata below." if known_gaps else "")
         ),
@@ -156,6 +218,6 @@ def _make_smard_asset(asset_name: str, variable: Variable, region: str, human_na
 
 
 smard_assets = [
-    _make_smard_asset(name, variable, region, human_name, unit)
-    for name, (variable, region, human_name, unit) in SMARD_SERIES.items()
+    _make_smard_asset(name, variable, region, group, human_name, unit)
+    for name, (variable, region, group, human_name, unit) in SMARD_SERIES.items()
 ]

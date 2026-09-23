@@ -25,16 +25,70 @@ DEFAULT_START_DATE = datetime(2015, 1, 1)
 
 
 class Variable(IntEnum):
-    """SMARD variable IDs for the series this project needs."""
+    """SMARD variable IDs.
 
-    SOLAR = 4068
-    WIND_ONSHORE = 4067
+    Full catalog, migrated from ~/research/smard-data/src/smard_data/config.py
+    (2026-09-23, see that repo's README/commit history for provenance) --
+    that repo predates this hub (first commit 2025-04) and is being
+    retired in its favor. Values unchanged from that source.
+    """
+
+    # Generation, by fuel type
+    BROWN_COAL = 1223
+    NUCLEAR = 1224
     WIND_OFFSHORE = 1225
+    HYDRO = 1226
+    OTHER_CONVENTIONAL = 1227
+    OTHER_RENEWABLE = 1228
+    BIOMASS = 4066
+    WIND_ONSHORE = 4067
+    SOLAR = 4068
+    HARD_COAL = 4069
+    PUMPED_STORAGE = 4070
+    NATURAL_GAS = 4071
+
+    # Consumption
     TOTAL_LOAD = 410
+    RESIDUAL_LOAD = 4359
+    PUMPED_STORAGE_LOAD = 4387
+
+    # Prices
     PRICE_DE_LU = 4169
-    CAPACITY_SOLAR = 188
-    CAPACITY_WIND_ONSHORE = 186
+    PRICE_DE_LU_NEIGHBORS = 5078
+    PRICE_BE = 4996
+    PRICE_NO2 = 4997
+    PRICE_AT = 4170
+    PRICE_DK1 = 252
+    PRICE_DK2 = 253
+    PRICE_FR = 254
+    PRICE_IT_NORTH = 255
+    PRICE_NL = 256
+    PRICE_PL = 257
+    PRICE_PL2 = 258
+    PRICE_CH = 259
+    PRICE_SI = 260
+    PRICE_CZ = 261
+    PRICE_HU = 262
+
+    # Forecasts
+    FORECAST_OFFSHORE = 3791
+    FORECAST_ONSHORE = 123
+    FORECAST_SOLAR = 125
+    FORECAST_OTHER = 715
+    FORECAST_WIND_SOLAR = 5097
+    FORECAST_TOTAL = 122
+
+    # Capacity
+    CAPACITY_BIOMASS = 189
+    CAPACITY_HYDRO = 3792
     CAPACITY_WIND_OFFSHORE = 4076
+    CAPACITY_WIND_ONSHORE = 186
+    CAPACITY_SOLAR = 188
+    CAPACITY_OTHER_RENEWABLE = 194
+    CAPACITY_BROWN_COAL = 4072
+    CAPACITY_HARD_COAL = 4075
+    CAPACITY_NATURAL_GAS = 198
+    CAPACITY_PUMPED_STORAGE = 4074
 
 
 def download_series(
