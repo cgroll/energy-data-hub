@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Downloaded/derived data -- not versioned on purpose, see README.md
+data/
+
+# Dagster's local run/event-log storage
+.dagster_home/
+
