@@ -1,0 +1,11 @@
+load_from:
+  - python_file:
+      relative_path: edh_dagster/definitions.py
+      working_directory: .
+      executable_path: .venv/bin/python
+      location_name: energy_data_hub
+  - python_file:
+      relative_path: ../pecd-power-validity-DE/dagster_book_asset.py
+      working_directory: ../pecd-power-validity-DE
+      executable_path: ../pecd-power-validity-DE/.venv/bin/python
+      location_name: book_pecd_power_validity_de

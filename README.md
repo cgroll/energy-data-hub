@@ -121,26 +121,32 @@ function; after actually rebuilding the book, running
 `make report-dagster` there sends a bare materialization event so the hub
 UI reflects it — Dagster never triggers the book build itself.
 
-To see both in one Asset Graph, point a workspace at both code locations:
+To see both in one Asset Graph, point a workspace at both code locations
+-- `workspace.yaml` in this repo already does, with the hub itself as one
+entry and every connected book repo as a sibling entry (paths relative to
+this file, i.e. `../<book-repo>/...`):
 
 ```yaml
-# ~/research/workspace.yaml
+# workspace.yaml (this repo)
 load_from:
   - python_file:
-      relative_path: energy-data-hub/edh_dagster/definitions.py
-      working_directory: energy-data-hub
-      executable_path: energy-data-hub/.venv/bin/python
+      relative_path: edh_dagster/definitions.py
+      working_directory: .
+      executable_path: .venv/bin/python
   - python_file:
-      relative_path: pecd-power-validity-DE/dagster_book_asset.py
-      working_directory: pecd-power-validity-DE
-      executable_path: pecd-power-validity-DE/.venv/bin/python
+      relative_path: ../pecd-power-validity-DE/dagster_book_asset.py
+      working_directory: ../pecd-power-validity-DE
+      executable_path: ../pecd-power-validity-DE/.venv/bin/python
 ```
 
 ```bash
-cd ~/research
-export DAGSTER_HOME=~/research/energy-data-hub/.dagster_home
-uv run --project energy-data-hub dagster dev -w workspace.yaml
+cd ~/research/energy-data-hub
+export DAGSTER_HOME=$(pwd)/.dagster_home
+uv run dagster dev -w workspace.yaml
 ```
+
+Connecting another book repo later is just one more `python_file` entry
+here, same shape as the `pecd-power-validity-DE` one.
 
 ## Open questions / not decided yet
 
