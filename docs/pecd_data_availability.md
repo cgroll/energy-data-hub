@@ -153,3 +153,58 @@ already gets PECD's true `nuts_0` product for every country in one
 1980-2025 full-Europe is a smaller, separate follow-up -- lower
 priority since it wasn't part of the wind-focused scoping conversation
 this file otherwise documents.
+
+**Update, 2026-09-24 (later the same day):** all of the above was run
+to completion -- every (technology, decade) combination for
+`wind_onshore` (tech `30`), `wind_offshore` (tech `20`), and
+`solar_country` (techs `60`/`61`/`62`/`63`, the solar follow-up
+mentioned above included) is downloaded and on disk under
+`data/pecd/capacity_factors_europe/` (30 files, ~471 MB). Consumed by
+`pecd_country_capacity_factors_simple`
+(`edh_dagster/assets/pecd.py`), which blends them into one per-country,
+per-technology capacity factor.
+
+## ⚠️ Solar's per-country blend is Germany's technology mix, not each country's
+
+`pecd_country_capacity_factors_simple` blends PECD's 4 solar
+technologies (industrial/commercial rooftop `60`, residential rooftop
+`61`, utility fixed-tilt `62`, utility tracking `63`) into one series
+per country. The *only* real weights available anywhere in this project
+are Germany's (`edh/pecd.py::DEFAULT_SOLAR_COUNTRY_WEIGHTS`, sourced from
+BSW-Solar/BNetzA/pv-magazine market figures for
+`energy-insights/pages/06_pecd_simple_vs_mastr_weighted.py`). Checked
+2026-09-24 whether this generalizes to other countries via public data:
+it does not, cleanly --
+
+- SolarPower Europe's EU Market Outlook publishes country-level
+  rooftop/commercial/utility segment tables, but the actual numbers are
+  behind their member portal; public coverage only gives EU-wide
+  aggregates (e.g. "utility-scale >50% of EU installs in 2024/2025").
+- Nothing found splits utility-scale further into fixed-tilt vs.
+  tracking by country at all -- Germany's own `2%` tracking figure came
+  from a single pv-magazine article manually counting tracking systems
+  among Germany's 300 largest solar parks, not a repeatable
+  country-level statistic.
+
+**Decision (2026-09-24, explicitly deferred rather than guessed):**
+ship `pecd_country_capacity_factors_simple` with every country
+defaulting to Germany's weights via
+`edh/pecd.py::SOLAR_COUNTRY_WEIGHT_OVERRIDES` (currently empty), so
+there's at least one apples-to-apples number per country, and revisit
+per-country once real figures are sourced (or the user decides which
+specific countries matter enough to research individually). This is a
+**real, potentially large distortion** for any country whose solar
+market doesn't resemble Germany's -- e.g. countries dominated by
+utility-scale (Spain, most of the North Africa/Middle East countries in
+this dataset) or by rooftop will have their blended capacity factor
+biased toward whichever PECD technology's weather response happens to
+look most like Germany's mix, not their own. Anyone using this asset's
+solar columns for a country other than Germany should treat the result
+as illustrative, not authoritative, until that country has a sourced
+entry in `SOLAR_COUNTRY_WEIGHT_OVERRIDES` -- see also the "Known
+data-quality caveats" section of the hub's README.md, and the
+`data_quality_warning` metadata field on the
+`pecd_country_capacity_factors_simple` asset itself in the Dagster UI.
+Wind onshore/offshore have no equivalent issue: both are computed from
+PECD's own zone-area geometry per country, a real calculation rather
+than a borrowed default.

@@ -382,13 +382,24 @@ def pecd_solar_europe_capacity_factors(context: AssetExecutionContext) -> None:
         "(solar/wind_onshore/wind_offshore), hourly, full downloaded history -- "
         "generalizes energy-insights' 06_pecd_simple_vs_mastr_weighted.py DE-only "
         "prototype (fixed solar technology-mix weights + area-weighted wind zone "
-        "means) to every country in the full-Europe pull above. Solar: 4 "
-        "technologies blended with DE-market-derived fixed weights (a known "
-        "simplification, not each country's real mix). Wind onshore: "
-        "area-weighted mean of PEON zones per country. Wind offshore: unweighted "
-        "mean of P2OF zones per country (no matching area mask at that zone "
-        "scheme -- see edh/pecd.py module comment). MultiIndex (technology, "
-        "country) columns."
+        "means) to every country in the full-Europe pull above.\n\n"
+        "**⚠️ DATA QUALITY CAVEAT -- solar only:** the 4 PECD solar "
+        "technologies are blended per country using Germany's own market-derived "
+        "weights (`edh/pecd.py::DEFAULT_SOLAR_COUNTRY_WEIGHTS`) for EVERY country "
+        "unless that country has a real entry in `SOLAR_COUNTRY_WEIGHT_OVERRIDES` "
+        "-- none do yet, as of 2026-09-24. This is not each country's real "
+        "technology mix, just a placeholder that at least gives an apples-to-apples "
+        "number; it can meaningfully distort a country whose solar market looks "
+        "very different from Germany's (e.g. much more utility-scale, or almost no "
+        "rooftop). Treat every country's solar series here as illustrative, not "
+        "authoritative, until it gets a sourced override -- see README.md's 'Known "
+        "data-quality caveats' section. Wind onshore/offshore have NO such caveat: "
+        "both are computed from PECD's own zone geometry per country, not a "
+        "borrowed default.\n\n"
+        "Wind onshore: area-weighted mean of PEON zones per country. Wind "
+        "offshore: unweighted mean of P2OF zones per country (no matching area "
+        "mask at that zone scheme -- see edh/pecd.py module comment). MultiIndex "
+        "(technology, country) columns."
     ),
     metadata={
         "source": "Derived from the three PECD europe capacity-factor assets above",
@@ -398,11 +409,19 @@ def pecd_solar_europe_capacity_factors(context: AssetExecutionContext) -> None:
         "unit": "capacity factor (0-1, dimensionless)",
         "timestamp_timezone": "naive, represents UTC",
         "update_pattern": "full_refresh, rebuilt from whatever decades are currently on disk",
+        "data_quality_warning": MetadataValue.md(
+            "**Solar only:** every country currently uses Germany's technology-mix "
+            "weights as a placeholder (`SOLAR_COUNTRY_WEIGHT_OVERRIDES` is empty) -- "
+            "a known, potentially large distortion for countries unlike Germany's "
+            "solar market. See `edh/pecd.py` module docstring and README.md. Wind "
+            "is unaffected (real per-country geometry, no borrowed weights)."
+        ),
     },
 )
 def pecd_country_capacity_factors_simple(context: AssetExecutionContext) -> None:
     from edh.paths import pecd_country_capacity_factors_simple_file, pecd_mask_file
     from edh.pecd import (
+        SOLAR_COUNTRY_WEIGHT_OVERRIDES,
         country_area_weighted_wind_cf,
         country_solar_capacity_factor_simple,
         country_unweighted_wind_cf,
@@ -415,6 +434,9 @@ def pecd_country_capacity_factors_simple(context: AssetExecutionContext) -> None
     onshore_country = country_area_weighted_wind_cf(onshore_cf, pecd_mask_file("peon"))
     offshore_country = country_unweighted_wind_cf(offshore_cf)
     solar_country = country_solar_capacity_factor_simple(solar_wide)
+
+    solar_countries = solar_wide.columns.get_level_values("region").unique()
+    countries_on_default_weights = sorted(set(solar_countries) - SOLAR_COUNTRY_WEIGHT_OVERRIDES.keys())
 
     combined = pd.concat(
         {"wind_onshore": onshore_country, "wind_offshore": offshore_country, "solar": solar_country},
@@ -432,6 +454,10 @@ def pecd_country_capacity_factors_simple(context: AssetExecutionContext) -> None
             "country_count": len(combined.columns.get_level_values("country").unique()),
             "min_timestamp": MetadataValue.text(str(combined.index.min())) if len(combined) else MetadataValue.text("n/a"),
             "max_timestamp": MetadataValue.text(str(combined.index.max())) if len(combined) else MetadataValue.text("n/a"),
+            "solar_countries_on_default_de_weights": MetadataValue.int(len(countries_on_default_weights)),
+            "solar_countries_with_sourced_weights": MetadataValue.text(
+                ", ".join(sorted(SOLAR_COUNTRY_WEIGHT_OVERRIDES)) if SOLAR_COUNTRY_WEIGHT_OVERRIDES else "none -- see data_quality_warning"
+            ),
             "preview": MetadataValue.md(combined.tail(3).to_markdown()) if len(combined) else MetadataValue.md("*empty*"),
         }
     )

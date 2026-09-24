@@ -149,6 +149,34 @@ uv run dagster dev -w workspace.yaml
 Connecting another book repo later is just one more `python_file` entry
 here, same shape as the `pecd-power-validity-DE` one.
 
+## Known data-quality caveats
+
+- **`pecd_country_capacity_factors_simple`'s solar blend uses Germany's
+  technology mix for every country.** PECD gives solar as 4 separate
+  technologies (industrial/commercial rooftop, residential rooftop,
+  utility fixed-tilt, utility tracking) with no guidance on how to blend
+  them into one series; the only real weights this hub has came from
+  Germany-specific market stats (BSW-Solar/BNetzA/pv-magazine, see
+  `energy-insights/pages/06_pecd_simple_vs_mastr_weighted.py`). Every one
+  of the ~52 other PECD countries currently reuses those same DE weights
+  (`edh/pecd.py::DEFAULT_SOLAR_COUNTRY_WEIGHTS`) purely so there's *some*
+  apples-to-apples number, not because it reflects that country's real
+  market. This is a real, potentially large distortion: a country whose
+  solar is mostly utility-scale (e.g. Spain, or most of North Africa) or
+  mostly rooftop will get a blended capacity factor biased toward
+  whichever technology's weather-response happens to look most like
+  Germany's mix, not its own. Checked 2026-09-24 whether better data
+  exists -- SolarPower Europe's EU Market Outlook does publish
+  per-country rooftop/utility segment tables, but they're member-only;
+  no free source at all splits utility further into fixed-tilt vs.
+  tracking per country. `edh/pecd.py::SOLAR_COUNTRY_WEIGHT_OVERRIDES` is
+  the place to add a real country's weights once sourced -- until a
+  country has an entry there, treat its solar capacity factor in this
+  asset as illustrative, not authoritative. Wind (onshore area-weighted,
+  offshore unweighted, both from PECD's own zone geometry) has no
+  equivalent problem -- it's a real per-country calculation, not a
+  borrowed default.
+
 ## Open questions / not decided yet
 
 - Whether to add a tiny shared client package (`energy-data-hub-client`)

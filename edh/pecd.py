@@ -290,33 +290,70 @@ def load_europe_solar_capacity_factors() -> pd.DataFrame:
 # --- Simplified, MaStR-free country-level capacity factor (2026-09-24) ----
 # Generalizes `energy-insights`' `06_pecd_simple_vs_mastr_weighted.py`
 # DE-only prototype to every PECD country now that the full-Europe pulls
-# above exist. Solar: blended across its 4 technologies with the same
-# fixed, DE-market-derived weights (the notebook's own finding was these
-# need no MaStR data and transfer almost losslessly for DE -- applied
-# uniformly to every country here since no other country has an
-# equivalent installed-technology-mix source; a known simplification, not
-# a per-country fit). Wind onshore: area-weighted mean per country using
-# PECD's own `peon` zone mask, which already covers the full domain (no
-# extra download needed). Wind offshore: **unweighted** mean per country,
-# not area-weighted -- the full-Europe pull uses the coarser `p2of` zone
-# scheme (see docs/pecd_data_availability.md) whose zone codes don't match
-# the existing `peof` mask's zones, and the DE notebook itself found
+# above exist. Solar: blended across its 4 technologies with per-country
+# weights from `SOLAR_COUNTRY_WEIGHT_OVERRIDES`, falling back to
+# `DEFAULT_SOLAR_COUNTRY_WEIGHTS` (DE-market-derived) for every country
+# without its own entry -- i.e. every country today, since no real
+# per-country technology-mix data has been sourced yet (2026-09-24: found
+# that SolarPower Europe's country-level rooftop/utility segment tables
+# are member-only, and no source at all gives PECD's finer fixed-tilt vs.
+# tracking utility split by country). The override dict exists so real
+# figures can be added country-by-country later without touching the
+# blending logic -- see `solar_country_weights`. Wind onshore:
+# area-weighted mean per country using PECD's own `peon` zone mask, which
+# already covers the full domain (no extra download needed). Wind
+# offshore: **unweighted** mean per country, not area-weighted -- the
+# full-Europe pull uses the coarser `p2of` zone scheme (see
+# docs/pecd_data_availability.md) whose zone codes don't match the
+# existing `peof` mask's zones, and the DE notebook itself found
 # unweighted vs. area-weighted barely differs (~0.975 vs ~0.977 hourly
 # correlation against the MaStR-weighted truth), so the accuracy given up
 # is minor next to needing a whole new CDS mask download.
 
-SOLAR_COUNTRY_WEIGHTS = {"62": 0.31, "63": 0.02, "61": 0.39, "60": 0.28}
+DEFAULT_SOLAR_COUNTRY_WEIGHTS = {"62": 0.31, "63": 0.02, "61": 0.39, "60": 0.28}
 # DE-market weights, ported verbatim from `06_pecd_simple_vs_mastr_weighted.py`
 # (~2025 BSW-Solar/BNetzA/pv-magazine figures) -- see that notebook for the
-# per-technology sourcing. Not each country's real technology mix.
+# per-technology sourcing. Used as every country's weights until that
+# country gets its own entry in `SOLAR_COUNTRY_WEIGHT_OVERRIDES` below.
+
+SOLAR_COUNTRY_WEIGHT_OVERRIDES: dict[str, dict[str, float]] = {
+    # "ES": {"60": ..., "61": ..., "62": ..., "63": ...},  -- add here once a
+    # country's real rooftop/utility (and, ideally, fixed-tilt/tracking)
+    # technology mix is sourced. Empty for now -- see module docstring.
+}
+
+
+def solar_country_weights(country: str) -> dict[str, float]:
+    """Technology-mix weights for one country: `SOLAR_COUNTRY_WEIGHT_OVERRIDES[country]`
+    if one has been sourced, else `DEFAULT_SOLAR_COUNTRY_WEIGHTS` (DE's, unvalidated
+    for every other country -- see module docstring)."""
+    return SOLAR_COUNTRY_WEIGHT_OVERRIDES.get(country, DEFAULT_SOLAR_COUNTRY_WEIGHTS)
 
 
 def country_solar_capacity_factor_simple(solar_wide: pd.DataFrame) -> pd.DataFrame:
-    """Blend solar's 4 PECD technologies into one series per country with
-    `SOLAR_COUNTRY_WEIGHTS`. `solar_wide` is
+    """Blend solar's 4 PECD technologies into one series per country, with
+    `solar_country_weights(country)`'s weights. `solar_wide` is
     `load_europe_solar_capacity_factors()`'s MultiIndex (technology,
-    region) frame; output has one plain column per country."""
-    return sum(solar_wide[tech] * weight for tech, weight in SOLAR_COUNTRY_WEIGHTS.items())
+    region) frame; output has one plain column per country.
+
+    A country missing one of the 4 technologies entirely (all-NaN for that
+    (technology, country) pair -- PECD doesn't model every technology
+    everywhere) has its remaining technologies' weights renormalized to
+    sum to 1, rather than propagating NaN into the whole blended series --
+    same treatment as the wind country blends' NaN-zone handling below."""
+    countries = solar_wide.columns.get_level_values("region").unique()
+    blended = {}
+    for country in countries:
+        modeled = {
+            tech: weight
+            for tech, weight in solar_country_weights(country).items()
+            if (tech, country) in solar_wide.columns and solar_wide[(tech, country)].notna().any()
+        }
+        if not modeled:
+            continue
+        total_weight = sum(modeled.values())
+        blended[country] = sum(solar_wide[(tech, country)] * (weight / total_weight) for tech, weight in modeled.items())
+    return pd.DataFrame(blended)
 
 
 def country_zone_area_weights(mask_file: Path, cf_columns: pd.Index) -> pd.Series:
