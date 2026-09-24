@@ -7,7 +7,7 @@ per-TSO/per-plant detail. This is one of the two real-world curtailment
 sources this project uses to explain the gap between PECD potential and
 SMARD's reported generation (the other being `pkg/redispatch_measures.py`).
 
-Canonical copy -- see ~/research/energy-data-hub/README.md. Consolidated
+Canonical copy -- see ~/research/energy-platform/energy-data-hub/README.md. Consolidated
 unchanged from ~/research/pecd-replication/pecdr/smard_redispatch.py
 (2026-09-23).
 

@@ -5,7 +5,12 @@ load_from:
       executable_path: .venv/bin/python
       location_name: energy_data_hub
   - python_file:
-      relative_path: ../pecd-power-validity-DE/dagster_book_asset.py
-      working_directory: ../pecd-power-validity-DE
-      executable_path: ../pecd-power-validity-DE/.venv/bin/python
+      relative_path: ../../pecd-power-validity-DE/dagster_book_asset.py
+      working_directory: ../../pecd-power-validity-DE
+      executable_path: ../../pecd-power-validity-DE/.venv/bin/python
       location_name: book_pecd_power_validity_de
+  - python_file:
+      relative_path: ../energy-insights/insights_dagster/definitions.py
+      working_directory: ../energy-insights
+      executable_path: ../energy-insights/.venv/bin/python
+      location_name: energy_insights

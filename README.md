@@ -60,11 +60,10 @@ edh/                  # plain Python package: HTTP clients, parsing, paths
   smard_redispatch.py # SMARD's monthly redispatch-by-source CSV
   redispatch_measures.py  # netztransparenz.de per-measure redispatch export
   paths.py            # output file locations under data/
-edh_dagster/           # Dagster layer: asset defs, schedule
+edh_dagster/           # Dagster layer: asset defs
   assets/
     smard.py           # one asset per SMARD series (group "smard")
     redispatch.py       # SMARD-by-source + netztransparenz (group "redispatch")
-  schedules.py          # daily refresh of the smard + redispatch groups
   definitions.py         # Definitions() entry point (see pyproject.toml [tool.dagster])
 data/                   # not versioned (.gitignore) -- current-state outputs only
 ```
@@ -73,7 +72,7 @@ data/                   # not versioned (.gitignore) -- current-state outputs on
 
 ```bash
 uv sync
-export DAGSTER_HOME=~/research/energy-data-hub/.dagster_home  # persists run/event history across restarts
+export DAGSTER_HOME=~/research/energy-platform/energy-data-hub/.dagster_home  # persists run/event history across restarts
 uv run dagster dev
 ```
 
@@ -91,10 +90,12 @@ a separate process) would then write into its *own* throwaway instance
 instead of the one the UI is showing, and never show up. Always set it to
 the same path for every `dagster dev` / `report-dagster` invocation.
 
-The `refresh_smard_daily` schedule (06:00 Europe/Berlin) only fires while
-`dagster dev`'s daemon is running. For it to fire unattended (laptop
-closed), this needs to move to somewhere always-on eventually — not done
-yet, see PROJECT.md-equivalent notes below.
+**No schedules right now (removed 2026-09-23):** every asset here is
+on-demand only, triggered by hand from the UI or `dagster asset
+materialize` — deliberately, since nothing currently needs a regular
+refresh. Re-adding a schedule later (e.g. a daily SMARD pull) is just a
+`ScheduleDefinition` + wiring it into `Definitions()`, same shape as
+before.
 
 ## How a book repo consumes hub data
 
@@ -102,7 +103,7 @@ No `dvc import`, no shared client package yet (pilot scope) — a book repo
 reads the hub's parquet files directly:
 
 ```python
-HUB_SMARD = Path.home() / "research" / "energy-data-hub" / "data" / "smard"
+HUB_SMARD = Path.home() / "research" / "energy-platform" / "energy-data-hub" / "data" / "smard"
 load = pd.read_parquet(HUB_SMARD / "load.parquet")
 ```
 
@@ -140,7 +141,7 @@ load_from:
 ```
 
 ```bash
-cd ~/research/energy-data-hub
+cd ~/research/energy-platform/energy-data-hub
 export DAGSTER_HOME=$(pwd)/.dagster_home
 uv run dagster dev -w workspace.yaml
 ```
@@ -150,8 +151,6 @@ here, same shape as the `pecd-power-validity-DE` one.
 
 ## Open questions / not decided yet
 
-- Persistent hosting for schedules to fire unattended (small always-on
-  host vs. accepting manual/local-only runs for now).
 - Whether to add a tiny shared client package (`energy-data-hub-client`)
   instead of book repos hardcoding the hub's absolute data path.
 - Generalizing beyond SMARD/redispatch to PECD, MaStR, ERA5, NUTS/region

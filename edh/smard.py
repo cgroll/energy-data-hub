@@ -7,7 +7,7 @@ call lists available block-start timestamps, a second call fetches each
 block's actual observations.
 
 Canonical copy -- this is now the single place SMARD is downloaded from
-(see ~/research/energy-data-hub/README.md). Consolidated from the
+(see ~/research/energy-platform/energy-data-hub/README.md). Consolidated from the
 near-identical copies in pecd-replication, pecd-power-validity-DE,
 delu-headline-forecast, t2m-averages-europe, vpp-learning, and
 world-of-energy (2026-09-23); this version keeps the superset of variables

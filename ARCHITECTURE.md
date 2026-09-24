@@ -131,7 +131,7 @@ place for work that isn't ready to be a hub asset or a book page yet.
    ```yaml
    stages:
      pull_hub_snapshot:
-       cmd: cp ~/research/energy-data-hub/data/smard/load.parquet data/hub_snapshot/
+       cmd: cp ~/research/energy-platform/energy-data-hub/data/smard/load.parquet data/hub_snapshot/
        outs:
          - data/hub_snapshot/load.parquet
    ```

@@ -3,7 +3,7 @@ Redispatch export (Format 5) -- one row per redispatch measure, with real
 start/end timestamps, direction, MW/MWh, affected plant/cluster name, and a
 coarse primary-energy-type flag.
 
-Canonical copy -- see ~/research/energy-data-hub/README.md. Consolidated
+Canonical copy -- see ~/research/energy-platform/energy-data-hub/README.md. Consolidated
 unchanged from ~/research/pecd-replication/pecdr/redispatch_measures.py
 (2026-09-23). The complementary, coarser monthly series lives in
 `edh/smard_redispatch.py`.
