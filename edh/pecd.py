@@ -279,12 +279,25 @@ def load_europe_solar_capacity_factors() -> pd.DataFrame:
     solar's 4 PECD technologies, combined into one MultiIndex
     (technology, country) column frame -- same column shape as
     `process_solar_capacity_factors`'s NUTS2 product, just at true
-    country-level (`nuts_0`) resolution and full-Europe instead of DE-only."""
+    country-level (`nuts_0`) resolution and full-Europe instead of DE-only.
+
+    Applies the same -1h correction as `process_solar_country_capacity_factors`
+    (PECD's solar timestamps run 1h ahead of true UTC, confirmed empirically
+    against SMARD) -- the raw per-decade parquet files on disk keep PECD's
+    original timestamps unmodified, so this must run every time they're
+    combined here, not just once. Missing this shift was caught 2026-09-24 by
+    comparing `pecd_country_capacity_factors_simple`'s DE solar column against
+    `de_capacity_factor_current_fleet` in `energy-insights`'
+    `06_pecd_simple_vs_mastr_weighted.py`: hourly correlation was sitting at
+    ~0.95 instead of the DE-only product's ~0.999, a symptom of exactly this
+    kind of 1-hour misalignment on a strongly diurnal series."""
     parts = {tech: load_europe_capacity_factors("solar_country", tech) for tech in SOLAR_TECHNOLOGIES}
     non_empty = {tech: df for tech, df in parts.items() if not df.empty}
     if not non_empty:
         return pd.DataFrame()
-    return pd.concat(non_empty, axis=1, names=["technology", "region"])
+    solar = pd.concat(non_empty, axis=1, names=["technology", "region"])
+    solar.index = solar.index - pd.Timedelta(hours=1)
+    return solar
 
 
 # --- Simplified, MaStR-free country-level capacity factor (2026-09-24) ----

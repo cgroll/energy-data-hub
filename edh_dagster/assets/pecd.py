@@ -336,8 +336,11 @@ pecd_wind_offshore_europe_capacity_factors = _make_europe_wind_cf_asset("wind_of
         "unit": "capacity factor (0-1, dimensionless)",
         "timestamp_timezone": (
             "naive, represents UTC minus 1h correction for solar (PECD's solar timestamps run 1h ahead of true "
-            "UTC, confirmed empirically against SMARD) -- NOT yet applied here, unlike process_solar_capacity_factors; "
-            "apply the same 1h shift downstream before comparing against observed data"
+            "UTC, confirmed empirically against SMARD). The raw per-decade parquet cache on disk keeps PECD's "
+            "original, uncorrected timestamps; edh.pecd.load_europe_solar_capacity_factors applies the shift on "
+            "every load, same as process_solar_country_capacity_factors -- any other code reading the raw decade "
+            "files directly must apply it too (fixed 2026-09-24, see that function's docstring for how the "
+            "miss was caught)."
         ),
         "update_pattern": "full_refresh per missing (technology, decade), static historical reference data",
     },
