@@ -22,6 +22,55 @@ Standards every asset in this hub is expected to meet. See
    This is enforced by convention, not code, today -- check it on review
    rather than assuming it's there.
 
+## Timestamps: UTC everywhere, no exceptions
+
+Every timestamp with time-of-day precision in this hub **must** be UTC --
+naive (no tzinfo) is fine, but the values themselves must represent true
+UTC instants, never a civil/wall-clock local time (Europe/Berlin or
+otherwise). This isn't just a documentation convention (see
+`timestamp_timezone` below) -- it's a requirement on the actual values.
+
+Why this matters more than it might seem: a civil local time has real,
+periodic ambiguity/gaps around DST transitions (a missing hour every
+spring, an ambiguous repeated hour every fall) that UTC never has by
+construction. Two sources in this hub sit on opposite sides of this
+correctly today for the same underlying reason -- neither ever passes
+through wall-clock local time:
+
+- `edh/smard.py::download_series` parses SMARD's raw Unix epoch
+  milliseconds directly (`pd.to_datetime(ms, unit="ms", utc=True)`) --
+  unambiguous UTC by definition, no DST logic needed at all.
+- `edh/pecd.py::load_region_timeseries_zip` reads PECD's CSV timestamps
+  as-is -- ERA5 reanalysis output is natively UTC-gridded, again never
+  local civil time. (Solar's separate -1h correction there is an
+  unrelated, constant labeling-convention quirk, not a DST issue -- see
+  that module's docstring.)
+
+**Known violation, fixed 2026-09-24:** `edh/redispatch_measures.py`
+previously parsed netztransparenz.de's `start`/`end` fields as naive
+Europe/Berlin wall-clock with no conversion -- a real violation of this
+rule, caught by questioning why PECD's solar shift wasn't also applied to
+wind (it shouldn't be; see that investigation) and then asking the
+broader question this section answers. Fixed by using the same raw CSV's
+own `ZEITZONE_VON`/`ZEITZONE_BIS` (CET/CEST) columns to convert to exact
+UTC -- see that module's docstring for the fix and
+`docs/pecd_data_availability.md`-style reasoning trail.
+
+**Bare calendar dates are a separate, allowed category.** A date with no
+time-of-day component (MaStR commissioning/shutdown dates, TTF gas's
+daily OHLCV index, `smard_redispatch_by_source`'s monthly `month` column)
+doesn't have a timezone to get wrong in the same sense -- state
+`timestamp_timezone: "n/a"` / `"bare calendar date, no time-of-day"` for
+these rather than forcing a UTC framing that doesn't apply.
+
+When adding a new source: check whether its raw timestamps are already
+UTC/epoch-based (nothing to do), civil-local with an explicit offset/zone
+flag per row (convert exactly, the way the redispatch fix does -- don't
+guess a fixed offset), or civil-local with no such flag (flag the
+DST-transition ambiguity honestly in the docstring and
+`timestamp_timezone`, the way the original redispatch code did before the
+fix, rather than silently treating it as UTC).
+
 ## Required metadata
 
 Every asset's static `metadata=` (not just its docstring) must state:

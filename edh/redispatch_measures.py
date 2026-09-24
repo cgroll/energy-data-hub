@@ -57,7 +57,12 @@ def download_redispatch_measures(from_date: str = EARLIEST_AVAILABLE_DATE, to_da
     sends on a real click.
     """
     if to_date is None:
-        to_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+        # UTC "today", not the local system clock's (BEST_PRACTICES.md's
+        # "Timestamps: UTC everywhere") -- this is just a calendar-date
+        # picker bound, so the only real consequence of getting it wrong is
+        # a redundant day at the edge of the requested range, but there's
+        # no reason to let the running machine's timezone leak in here.
+        to_date = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
 
     def us_date(iso_date: str) -> str:
         ts = pd.Timestamp(iso_date)
@@ -140,22 +145,24 @@ def load_redispatch_measures(path) -> pd.DataFrame:
     `RICHTUNG` values (e.g. "erh¿hen" instead of "erhöhen") -- normalized
     by checking a "reduz"/"erh" prefix rather than an exact string match.
 
-    **`start`/`end` are Europe/Berlin wall-clock, not UTC** -- confirmed
-    directly from the raw CSV's own `ZEITZONE_VON`/`ZEITZONE_BIS` columns
-    (CEST/CET), which correctly straddle real DST transitions. Those two
-    columns are read here only to confirm this, then discarded: `start`/
-    `end` are parsed from the bare date+time fields with no DST
-    disambiguation, so the ~2 hours/year at the fall DST transition where
-    local wall-clock time is genuinely ambiguous (both an 02:xx CEST and
-    an 02:xx CET instant exist) are not distinguished -- a small, known
-    imprecision (order of 1-4 rows out of ~89k), not a silent full-scale
-    UTC/local mismatch like the one `edh/smard.py` deliberately avoids.
+    **`start`/`end` are converted to true UTC, not left as Europe/Berlin
+    wall-clock** (fixed 2026-09-24 -- see BEST_PRACTICES.md's "Timestamps:
+    UTC everywhere" section). The raw CSV's own `ZEITZONE_VON`/
+    `ZEITZONE_BIS` columns give the exact CET (`UTC+1`) or CEST (`UTC+2`)
+    offset for every row's start/end individually, so the conversion is
+    exact -- no DST-transition ambiguity at all, unlike a blanket
+    `tz_localize("Europe/Berlin")` would have. Previously these columns
+    were read only to *confirm* the wall-clock assumption, then discarded,
+    leaving `start`/`end` in local time with a documented ~2-hours/year
+    fall-DST ambiguity (order of 1-4 rows out of ~89k); now they're used
+    to remove that ambiguity entirely.
     """
     raw = pd.read_csv(path, sep=";", encoding="utf-8-sig")
     raw.columns = [c.strip() for c in raw.columns]
 
-    start = pd.to_datetime(raw["BEGINN_DATUM"] + " " + raw["BEGINN_UHRZEIT"], format="%d.%m.%Y %H:%M")
-    end = pd.to_datetime(raw["ENDE_DATUM"] + " " + raw["ENDE_UHRZEIT"], format="%d.%m.%Y %H:%M")
+    utc_offset = {"CET": pd.Timedelta(hours=1), "CEST": pd.Timedelta(hours=2)}
+    start = pd.to_datetime(raw["BEGINN_DATUM"] + " " + raw["BEGINN_UHRZEIT"], format="%d.%m.%Y %H:%M") - raw["ZEITZONE_VON"].map(utc_offset)
+    end = pd.to_datetime(raw["ENDE_DATUM"] + " " + raw["ENDE_UHRZEIT"], format="%d.%m.%Y %H:%M") - raw["ZEITZONE_BIS"].map(utc_offset)
     mwh = raw["GESAMTE_ARBEIT_MWH"].astype(str).str.replace(",", ".").astype(float)
     avg_mw = raw["MITTLERE_LEISTUNG_MW"].astype(str).str.replace(",", ".").astype(float)
     max_mw = raw["MAXIMALE_LEISTUNG_MW"].astype(str).str.replace(",", ".").astype(float)

@@ -11,11 +11,12 @@ start/end timestamps per measure, not a regular grid at all.
 
 **Timestamps:** `smard_redispatch_by_source`'s `month` column is a bare
 calendar date (no time-of-day, no timezone concept applies).
-`redispatch_measures`'s `start`/`end` are parsed directly from
-netztransparenz's CSV date+time fields with no explicit UTC conversion --
-assumed to be Europe/Berlin wall-clock (a German regulatory publication),
-but this has **not** been verified against DST-transition behavior in the
-data. Flagging as an open caveat rather than a confirmed fact.
+`redispatch_measures`'s `start`/`end` are converted to true UTC from
+netztransparenz's Europe/Berlin CET/CEST date+time fields, using the same
+CSV's own per-row `ZEITZONE_VON`/`ZEITZONE_BIS` flags for an exact
+conversion (fixed 2026-09-24, see BEST_PRACTICES.md's "Timestamps: UTC
+everywhere" and `edh/redispatch_measures.py::load_redispatch_measures`'s
+docstring).
 
 **Units:** `gwh` (smard_redispatch_by_source) and `mwh`
 (redispatch_measures) are self-documenting via their own column names --
@@ -114,10 +115,10 @@ def smard_redispatch_by_source(context: AssetExecutionContext) -> None:
         "region": "DE",
         "unit": "mwh: MWh; avg_mw/max_mw: MW",
         "timestamp_timezone": (
-            "Europe/Berlin wall-clock, CONFIRMED via the raw CSV's own "
-            "ZEITZONE_VON/ZEITZONE_BIS (CEST/CET) columns -- see "
-            "load_redispatch_measures() docstring for the ~2h/year DST-"
-            "ambiguity caveat this doesn't resolve"
+            "naive, represents UTC -- converted from Europe/Berlin CET/CEST "
+            "using the raw CSV's own per-row ZEITZONE_VON/ZEITZONE_BIS flags "
+            "for an exact conversion (fixed 2026-09-24, see "
+            "load_redispatch_measures() docstring)"
         ),
         "update_pattern": "full_refresh: always re-fetches the full series (no delta endpoint)",
     },
