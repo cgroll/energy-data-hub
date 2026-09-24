@@ -212,6 +212,18 @@ def pecd_country_capacity_factors_simple_file() -> Path:
     return PECD_DIR / "pecd_country_capacity_factors_simple.parquet"
 
 
+def pecd_country_capacity_factors_simple_de_file() -> Path:
+    """Just the `DE` columns of `pecd_country_capacity_factors_simple`
+    (solar/wind_onshore/wind_offshore, plain columns, no MultiIndex),
+    exported standalone so a consumer that only wants Germany doesn't need
+    to load the full ~230MB all-country file. Not to be confused with
+    `de_capacity_factor_current_fleet` below -- that's the real,
+    MaStR-weighted DE product; this is DE's slice of the simplified,
+    every-country approximation. See `edh_dagster/assets/pecd.py`."""
+    PECD_DIR.mkdir(parents=True, exist_ok=True)
+    return PECD_DIR / "pecd_country_capacity_factors_simple_de.parquet"
+
+
 def de_capacity_factor_current_fleet_file() -> Path:
     """Germany-wide hourly capacity factor (0-1), current fleet held fixed
     across the full 2015-2025 weather record -- answers "what would today's

@@ -169,7 +169,18 @@ def process_solar_capacity_factors() -> pd.DataFrame:
     """Combine the 4 solar-technology zips into one Germany-only, hourly,
     MultiIndex (technology, region) frame. PECD's solar timestamps run 1h
     ahead of true UTC (confirmed empirically in pecd-replication against
-    SMARD) -- corrected here."""
+    SMARD) -- corrected here.
+
+    Wind is deliberately NOT given the same correction -- this isn't an
+    oversight. `pecd-replication/pipeline/26_analyse_solar_bias_drivers.py`
+    ran the identical hour-shift-sweep test against wind's own PECD product
+    and found no improvement at any shift, ruling out a shared timestamp bug
+    in how the files are read. Solar's own shift cut MAE against SMARD
+    roughly in half (0.033 -> 0.016) and raised correlation 0.940 -> 0.982,
+    consistently every year -- plausibly because ERA5's solar-radiation
+    fields are *accumulated over the preceding hour* while wind speed is
+    *instantaneous*, a labeling convention only solar's PECD product seems
+    to leave uncorrected."""
     parts = {tech: load_region_timeseries_zip(pecd_capacity_factor_zip("solar", tech)) for tech in SOLAR_TECHNOLOGIES}
     solar = pd.concat(parts, axis=1, names=["technology", "region"])
     solar.index = solar.index - pd.Timedelta(hours=1)

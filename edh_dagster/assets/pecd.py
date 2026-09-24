@@ -444,8 +444,15 @@ def pecd_country_capacity_factors_simple(context: AssetExecutionContext) -> None
     combined = pd.concat(
         {"wind_onshore": onshore_country, "wind_offshore": offshore_country, "solar": solar_country},
         axis=1,
+        join="inner",
         names=["technology", "country"],
     ).sort_index()
+    # join="inner": solar's index is shifted -1h for its UTC correction (see
+    # load_europe_solar_capacity_factors) but wind's isn't, so an outer join
+    # would leave one dangling hour at each end of the range with only one
+    # technology populated (e.g. 2025-12-31 23:00 -- wind's last raw hour,
+    # one hour past solar's true-UTC-corrected last hour). Inner join keeps
+    # only hours every technology actually covers.
 
     output_file = pecd_country_capacity_factors_simple_file()
     combined.to_parquet(output_file)
@@ -462,6 +469,49 @@ def pecd_country_capacity_factors_simple(context: AssetExecutionContext) -> None
                 ", ".join(sorted(SOLAR_COUNTRY_WEIGHT_OVERRIDES)) if SOLAR_COUNTRY_WEIGHT_OVERRIDES else "none -- see data_quality_warning"
             ),
             "preview": MetadataValue.md(combined.tail(3).to_markdown()) if len(combined) else MetadataValue.md("*empty*"),
+        }
+    )
+
+
+@asset(
+    name="pecd_country_capacity_factors_simple_de",
+    deps=["pecd_country_capacity_factors_simple"],
+    group_name="pecd_country",
+    kinds={"parquet"},
+    tags=_PECD_TAGS,
+    description=(
+        "Solar/wind_onshore/wind_offshore capacity factor for Germany only, hourly, full downloaded history -- "
+        "just the DE columns of pecd_country_capacity_factors_simple, exported as its own small file so a "
+        "consumer that only wants Germany doesn't need to load the full ~230MB all-country parquet. Not the "
+        "same thing as de_capacity_factor_current_fleet (that's the real MaStR-weighted DE product); this is "
+        "DE's slice of the every-country simplified approximation, for whoever specifically wants to compare "
+        "the two (see 06_pecd_simple_vs_mastr_weighted.py in energy-insights)."
+    ),
+    metadata={
+        "source": "Derived from pecd_country_capacity_factors_simple (DE columns only)",
+        "region": "Germany only",
+        "resolution": "hourly, full downloaded history, one column per technology",
+        "unit": "capacity factor (0-1, dimensionless)",
+        "timestamp_timezone": "naive, represents UTC",
+        "update_pattern": "full_refresh, rebuilt whenever pecd_country_capacity_factors_simple changes",
+    },
+)
+def pecd_country_capacity_factors_simple_de(context: AssetExecutionContext) -> None:
+    from edh.paths import pecd_country_capacity_factors_simple_de_file, pecd_country_capacity_factors_simple_file
+
+    country_simple = pd.read_parquet(pecd_country_capacity_factors_simple_file())
+    de = country_simple.xs("DE", axis=1, level="country")
+
+    output_file = pecd_country_capacity_factors_simple_de_file()
+    de.to_parquet(output_file)
+
+    context.add_output_metadata(
+        {
+            "dagster/row_count": len(de),
+            "path": MetadataValue.path(str(output_file)),
+            "min_timestamp": MetadataValue.text(str(de.index.min())) if len(de) else MetadataValue.text("n/a"),
+            "max_timestamp": MetadataValue.text(str(de.index.max())) if len(de) else MetadataValue.text("n/a"),
+            "preview": MetadataValue.md(de.tail(3).to_markdown()) if len(de) else MetadataValue.md("*empty*"),
         }
     )
 
@@ -614,6 +664,7 @@ pecd_assets = [
     pecd_wind_offshore_europe_capacity_factors,
     pecd_solar_europe_capacity_factors,
     pecd_country_capacity_factors_simple,
+    pecd_country_capacity_factors_simple_de,
     de_potential_historic,
     de_capacity_factor_current_fleet,
 ]

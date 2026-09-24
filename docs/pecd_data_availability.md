@@ -208,3 +208,49 @@ data-quality caveats" section of the hub's README.md, and the
 Wind onshore/offshore have no equivalent issue: both are computed from
 PECD's own zone-area geometry per country, a real calculation rather
 than a borrowed default.
+
+## Timestamps: solar gets a -1h UTC correction, wind deliberately doesn't
+
+Every asset in this file uses naive timestamps meant to represent true
+UTC -- but PECD's solar and wind products don't actually share the same
+labeling convention at source, so they can't be treated identically.
+
+`pecd-replication/pipeline/26_analyse_solar_bias_drivers.py` ran an
+hour-shift-sweep test against SMARD's real generation for both products.
+Solar: shifting its timestamps back 1 hour cut MAE against SMARD roughly
+in half (0.033 -> 0.016) and raised correlation 0.940 -> 0.982,
+consistently every year -- PECD's solar capacity factor genuinely runs 1h
+ahead of true UTC. Wind: the identical test found no improvement at any
+shift, ruling out that this is a bug in how the files get read (both use
+the same `load_region_timeseries_zip`) rather than a solar-specific
+issue. Plausible mechanism: ERA5's solar-radiation fields are
+*accumulated over the preceding hour*, while wind speed is *instantaneous*
+at the labeled timestamp -- a labeling convention only PECD's solar
+product appears to leave uncorrected.
+
+**Re-verified independently 2026-09-24** with a more powerful test than a
+single shift-and-compare-MAE check: a lagged cross-correlation scan (-4h
+to +4h) between PECD's DE series and SMARD's actual generation. Solar
+(uncorrected) peaks sharply at lag -1h (corr 0.817 vs. 0.782 at lag 0) --
+confirms the offset cleanly, and the corrected series' peak correctly
+sits at lag 0. Wind onshore's curve is much flatter (corr 0.761-0.768
+across the same range, vs. solar's 0.14-per-hour swing) -- expected,
+since wind is far more hour-to-hour autocorrelated than solar's sharp
+diurnal cycle, so this test has genuinely lower power for wind and a
+small true offset could plausibly hide in that flatness. Even so, wind's
+peak sits at lag 0 (0.7678), not lag -1 (0.7674, statistically
+indistinguishable but not higher) -- weak evidence given the flatness,
+but pointing the same direction as the original MAE test and the
+accumulated-vs-instantaneous mechanism above, not against it.
+
+Applied in `edh/pecd.py::process_solar_capacity_factors` /
+`process_solar_country_capacity_factors` / `load_europe_solar_capacity_factors`
+(all three shift by -1h); intentionally absent from every wind function.
+Caught a real instance of this mattering 2026-09-24: `pecd_country_capacity_factors_simple`
+combines solar (shifted) and wind (unshifted) via `pd.concat(..., axis=1)`
+-- since both series otherwise cover the same raw range, an outer join
+left one dangling hour at each end of the output with only one
+technology populated (e.g. solar NaN at the very last hour, since its
+corrected range ends 1h before wind's raw range does). Fixed with
+`join="inner"` so the combined output only spans hours every technology
+actually covers -- a clean, gap-free, duplicate-free hourly UTC grid.
