@@ -11,6 +11,14 @@ dependencies = [
     "pyarrow>=17.0.0",
     "numpy>=1.26.0",
     "requests>=2.32.0",
+    "open-mastr>=0.17.1",
+    "cdsapi>=0.7.6",
+    "xarray>=2024.9.0",
+    "netcdf4>=1.7.0",
+    "openpyxl>=3.1.0",
+    "geopandas>=1.0.0",
+    "shapely>=2.0.0",
+    "yfinance>=0.2.40",
 ]
 
 [build-system]
