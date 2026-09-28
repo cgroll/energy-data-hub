@@ -36,6 +36,12 @@ CAPACITY_DIR = DATA_ROOT / "capacity"
 # smard/.
 GAS_DIR = DATA_ROOT / "gas"
 
+# Kelmarsh wind farm data (Zenodo record 5841834) -- a single named UK wind
+# farm's own real metered generation, used to validate PECD's onshore wind
+# capacity factors against ground truth. Not a national aggregate like
+# smard/ or pecd/, so kept in its own directory.
+KELMARSH_DIR = DATA_ROOT / "kelmarsh"
+
 
 def smard_file(name: str) -> Path:
     """Path for one SMARD series, e.g. `smard_file("load")` ->
@@ -233,3 +239,19 @@ def de_capacity_factor_current_fleet_file() -> Path:
     `edh/pecd.py`."""
     PECD_DIR.mkdir(parents=True, exist_ok=True)
     return PECD_DIR / "de_capacity_factor_current_fleet.parquet"
+
+
+def kelmarsh_wt_static_file() -> Path:
+    """Per-turbine static specs for Kelmarsh wind farm's 6 Senvion MM92
+    units: coordinates, rated power, hub height, rotor diameter,
+    commercial operations date. See `edh/kelmarsh.py`."""
+    KELMARSH_DIR.mkdir(parents=True, exist_ok=True)
+    return KELMARSH_DIR / "kelmarsh_wt_static.parquet"
+
+
+def kelmarsh_grid_meter_file() -> Path:
+    """Kelmarsh wind farm's 10-minute site grid meter export: real metered
+    generation at the grid connection point, plus Greenbyte's own
+    availability flags. See `edh/kelmarsh.py`."""
+    KELMARSH_DIR.mkdir(parents=True, exist_ok=True)
+    return KELMARSH_DIR / "kelmarsh_grid_meter.parquet"
