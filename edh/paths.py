@@ -255,3 +255,12 @@ def kelmarsh_grid_meter_file() -> Path:
     availability flags. See `edh/kelmarsh.py`."""
     KELMARSH_DIR.mkdir(parents=True, exist_ok=True)
     return KELMARSH_DIR / "kelmarsh_grid_meter.parquet"
+
+
+def kelmarsh_turbine_scada_file() -> Path:
+    """Kelmarsh wind farm's 10-minute per-turbine SCADA: real nacelle wind
+    speed (plain + density-adjusted), each turbine's own metered power,
+    and data availability, long format (one row per turbine per
+    timestamp). See `edh/kelmarsh.py`."""
+    KELMARSH_DIR.mkdir(parents=True, exist_ok=True)
+    return KELMARSH_DIR / "kelmarsh_turbine_scada.parquet"

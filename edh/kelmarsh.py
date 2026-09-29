@@ -17,16 +17,39 @@ the analysis notebook itself is rebuilt against this hub's own outputs in
 energy-insights, not re-derived from `energy-research`'s copy.
 
 **Source:** https://zenodo.org/records/5841834, Cubico Sustainable
-Investments Ltd, CC-BY-4.0. Only the two files needed for farm-level
-generation are fetched here -- turbine static specs and the site's
-fiscal/grid meter export -- not the much larger (~1.5 GB combined)
-per-turbine SCADA zips, which this comparison doesn't need.
+Investments Ltd, CC-BY-4.0.
 
 **Load pattern: `full_refresh`.** The underlying Zenodo record is a fixed,
 versioned archival dataset (2016-01-01 to 2021-07-01, not an ongoing
 feed) -- small and with no revision risk, so re-downloading and
 overwriting the whole thing every run is simpler than any watermark
 logic. See `docs/load_patterns.md`.
+
+**2026-09-29 addition -- per-turbine SCADA (wind speed / power):**
+migrated from `energy-research`'s `03_download_kelmarsh_scada.py` +
+`04_compare_windspeed_reconstruction.py`, which found that real per-
+turbine nacelle wind speed run through `windpowerlib`'s real MM92/2050
+power curve (an exact nameplate match for Kelmarsh's turbines) tracks
+actual generation far better than PECD (hourly NMAE 7.3% vs. PECD's
+35.8%, both availability-adjusted) -- strong evidence PECD's hourly-scale
+error is mostly its coarse weather-grid input, not its conversion
+formula. See that repo's PROJECT.md for the full investigation, including
+two negative/calibration results worth knowing before reusing this data:
+a "density-adjusted" wind speed variant looked better raw but turned out
+to be a data-coverage artifact (its missing rows concentrate in low-
+availability hours), and even summing each turbine's own real metered
+power (no model at all) still misses the grid meter by NMAE 4.0% --
+ordinary transformer/house-load loss, a real ceiling no wind-speed model
+can beat.
+
+The raw per-year SCADA zips (~1.5 GB combined across 2016-2021, one file
+per turbine per year with ~250 columns each) are disposable intermediates
+here too, same as the grid meter zip -- downloaded to memory, parsed, and
+discarded; only `Wind speed (m/s)`, `Density adjusted wind speed (m/s)`,
+`Power (kW)`, and `Data Availability` are kept, not the full per-turbine
+telemetry (temperatures, vibration, curtailment-by-cause breakdowns,
+...). A future consumer needing more of that telemetry should extend
+`download_turbine_scada` rather than re-parsing the zips separately.
 """
 
 import io
@@ -38,6 +61,20 @@ import pandas as pd
 RECORD_FILES_BASE = "https://zenodo.org/api/records/5841834/files"
 STATIC_URL = f"{RECORD_FILES_BASE}/Kelmarsh_WT_static.csv/content"
 GRID_ZIP_URL = f"{RECORD_FILES_BASE}/Kelmarsh_Grid_3088.zip/content"
+SCADA_ZIPS = {
+    2016: "Kelmarsh_SCADA_2016_3082.zip",
+    2017: "Kelmarsh_SCADA_2017_3083.zip",
+    2018: "Kelmarsh_SCADA_2018_3084.zip",
+    2019: "Kelmarsh_SCADA_2019_3085.zip",
+    2020: "Kelmarsh_SCADA_2020_3086.zip",
+    2021: "Kelmarsh_SCADA_2021_3087.zip",
+}
+SCADA_COLUMNS_TO_KEEP = [
+    "Wind speed (m/s)",
+    "Density adjusted wind speed (m/s)",
+    "Power (kW)",
+    "Data Availability",
+]
 
 
 def _download(url: str) -> bytes:
@@ -79,3 +116,45 @@ def download_grid_meter() -> pd.DataFrame:
     df.columns = [c.lstrip("# ").strip() for c in df.columns]
     df["Date and time"] = pd.to_datetime(df["Date and time"], utc=True).dt.tz_localize(None)
     return df.set_index("Date and time").rename_axis("timestamp")
+
+
+def _parse_turbine_csv(raw_bytes: bytes) -> tuple[str, pd.DataFrame]:
+    lines = raw_bytes.decode("utf-8").splitlines()
+    turbine_name = next(l for l in lines if l.startswith("# Turbine:")).split(":", 1)[1].strip()
+    header_idx = next(i for i, line in enumerate(lines) if line.startswith("# Date and time"))
+
+    df = pd.read_csv(io.BytesIO(raw_bytes), skiprows=header_idx)
+    df.columns = [c.lstrip("# ").strip() for c in df.columns]
+    df["Date and time"] = pd.to_datetime(df["Date and time"], utc=True).dt.tz_localize(None)
+    df = df.set_index("Date and time")
+
+    keep = [c for c in SCADA_COLUMNS_TO_KEEP if c in df.columns]
+    return turbine_name, df[keep]
+
+
+def download_turbine_scada() -> pd.DataFrame:
+    """10-minute per-turbine SCADA: real nacelle `Wind speed (m/s)` (plus
+    `Density adjusted wind speed (m/s)` where Greenbyte computed it --
+    ~92% coverage, concentrated-missing during low-availability periods,
+    see module docstring), each turbine's own metered `Power (kW)`, and
+    `Data Availability`, 2016-01-03 to 2021-06-30, all 6 turbines, long
+    format (one row per turbine per timestamp, `turbine` column
+    identifies which).
+
+    Downloads and parses all 6 years' SCADA zips (~1.5 GB combined) in
+    memory -- nothing raw is written to disk, only this narrow extraction.
+    Slow (network-bound on 1.5 GB): expect several minutes.
+    """
+    frames = []
+    for zip_name in SCADA_ZIPS.values():
+        zip_bytes = _download(f"{RECORD_FILES_BASE}/{zip_name}/content")
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            turbine_files = [n for n in zf.namelist() if n.startswith("Turbine_Data_")]
+            for name in turbine_files:
+                turbine_name, df = _parse_turbine_csv(zf.read(name))
+                df = df.reset_index().rename(columns={"Date and time": "timestamp"})
+                df["turbine"] = turbine_name
+                frames.append(df)
+
+    combined = pd.concat(frames, ignore_index=True)
+    return combined.sort_values(["turbine", "timestamp"]).reset_index(drop=True)
