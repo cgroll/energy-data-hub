@@ -16,6 +16,23 @@ formats.
 FCR (PRL) 4-hour-block tender results available from 2021-01-01 (before
 that, FCR used a single daily NEGPOS_00_24 product -- not covered here).
 aFRR (SRL) capacity data available from 2018-10-01.
+
+**⚠️ The 4-hour block columns (`negpos_00_04`, `neg_00_04`, `pos_00_04`,
+...) are German local clock time (CET/CEST), NOT UTC**, even though the
+`delivery_date` index itself is a plain, timezone-unambiguous calendar
+date. Confirmed 2026-09-30 via regelleistung.net's own FCR Cooperation
+documentation: block delivery duration is "usually 4 hours, subject to
+daylight saving time shift" -- on the two DST-transition days per year,
+one block is really only 3 (spring) or 5 (autumn) UTC hours, not 4,
+because the boundaries are pinned to German wall-clock hours, not UTC.
+**Do not treat `..._08_12` as "08:00-12:00 UTC"** -- e.g. when joining
+against an hourly-UTC series (`smard_price_de_lu`) or computing an
+energy-weighted average, convert each block's nominal CET/CEST hours to
+UTC for that specific `delivery_date` first (same per-day CET/CEST
+offset logic `edh/rebap.py` already applies). See
+`edh_dagster/assets/balancing_market.py`'s `block_timezone_warning`
+asset metadata for the same warning surfaced in the Dagster UI, and
+README.md's "Known data-quality caveats".
 """
 
 import warnings
@@ -105,6 +122,7 @@ def _parse_fcr_results(content: bytes) -> pd.DataFrame:
     Returns a wide DataFrame indexed by `delivery_date` (UTC-midnight
     Timestamps), one column per 4-hour block: `negpos_00_04` ...
     `negpos_20_24`. Prices in EUR/MW/h (raw EUR/MW-per-block divided by 4).
+    **The block columns are CET/CEST, not UTC -- see module docstring.**
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -146,6 +164,7 @@ def _parse_afrr_capacity_results(content: bytes) -> pd.DataFrame:
     Returns a wide DataFrame indexed by `delivery_date` (UTC-midnight
     Timestamps), one column per direction x block: `neg_00_04` ...
     `pos_20_24`. Prices in EUR/MW/h.
+    **The block columns are CET/CEST, not UTC -- see module docstring.**
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -177,7 +196,8 @@ def download_fcr_prices(date_from: date, date_to: date) -> pd.DataFrame:
     """Download FCR capacity prices, `[date_from, date_to]` (both
     inclusive). Columns `negpos_00_04` ... `negpos_20_24`, EUR/MW/h, indexed
     by naive UTC-midnight `delivery_date`. Empty if `date_from > date_to` or
-    no files are available in range."""
+    no files are available in range. **The block columns themselves are
+    CET/CEST, not UTC -- see module docstring before using them.**"""
     if date_from > date_to:
         return pd.DataFrame()
 
@@ -197,7 +217,8 @@ def download_afrr_capacity_prices(date_from: date, date_to: date) -> pd.DataFram
     """Download aFRR capacity prices, `[date_from, date_to]` (both
     inclusive). Columns `neg_00_04` ... `pos_20_24`, EUR/MW/h, indexed by
     naive UTC-midnight `delivery_date`. Empty if `date_from > date_to` or no
-    files are available in range."""
+    files are available in range. **The block columns themselves are
+    CET/CEST, not UTC -- see module docstring before using them.**"""
     if date_from > date_to:
         return pd.DataFrame()
 

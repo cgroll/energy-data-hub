@@ -283,8 +283,9 @@ def rebap_price_file() -> Path:
 def fcr_capacity_price_file() -> Path:
     """FCR (PRL) settlement capacity price, Germany, daily (one row per
     delivery day), one column per 4-hour block (`negpos_00_04` ...
-    `negpos_20_24`), EUR/MW/h, naive UTC-midnight index. See
-    `edh/regelleistung.py`."""
+    `negpos_20_24`), EUR/MW/h, naive UTC-midnight index. **The block
+    columns themselves are CET/CEST, not UTC** -- see `edh/regelleistung.py`
+    module docstring before using them."""
     BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
     return BALANCING_MARKET_DIR / "fcr_capacity_price.parquet"
 
@@ -292,7 +293,8 @@ def fcr_capacity_price_file() -> Path:
 def afrr_capacity_price_file() -> Path:
     """aFRR (SRL) marginal capacity price, Germany, daily (one row per
     delivery day), one column per direction x 4-hour block (`neg_00_04`
-    ... `pos_20_24`), EUR/MW/h, naive UTC-midnight index. See
-    `edh/regelleistung.py`."""
+    ... `pos_20_24`), EUR/MW/h, naive UTC-midnight index. **The block
+    columns themselves are CET/CEST, not UTC** -- see `edh/regelleistung.py`
+    module docstring before using them."""
     BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
     return BALANCING_MARKET_DIR / "afrr_capacity_price.parquet"

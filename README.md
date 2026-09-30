@@ -194,6 +194,23 @@ here, same shape as the `pecd-power-validity-DE` one.
   Sunday that year) -- confirmed directly against regelleistung.net's own
   monthly source file, not a parsing bug here. Allowlisted in
   `edh_dagster/checks/balancing_market.py::KNOWN_REGELLEISTUNG_GAPS`.
+- **⚠️ `fcr_capacity_price`/`afrr_capacity_price`'s 4-hour block columns
+  (`negpos_00_04`, `neg_00_04`, `pos_00_04`, ...) are German local clock
+  time (CET/CEST), NOT UTC** -- easy to get wrong since the `delivery_date`
+  *index* genuinely is a plain, timezone-unambiguous calendar date, and it's
+  tempting to assume the block columns inherit that same UTC-safety.
+  Confirmed 2026-09-30 via regelleistung.net's own FCR Cooperation
+  documentation: block delivery duration is "usually 4 hours, subject to
+  daylight saving time shift" -- on the two DST-transition days per year,
+  one block is genuinely only 3 (spring) or 5 (autumn) real UTC hours, not
+  4, because the boundaries are pinned to German wall-clock hours. **Do
+  not treat `..._08_12` as "08:00-12:00 UTC"** when joining against an
+  hourly-UTC series (e.g. `smard_price_de_lu`) or computing an
+  energy-weighted average from the capacity price -- convert each block's
+  nominal CET/CEST hours to UTC for that specific `delivery_date` first,
+  the same way `edh/rebap.py` already does for its own per-row local-time
+  field. See `edh/regelleistung.py`'s module docstring and the
+  `block_timezone_warning` metadata on both assets in the Dagster UI.
 
 ## Open questions / not decided yet
 

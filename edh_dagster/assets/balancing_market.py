@@ -48,7 +48,29 @@ own gap checks instead.
 convention as `smard`/PECD/etc.) -- reBAP's source rows carry an explicit
 CET/CEST label per row, converted exactly (no DST-transition ambiguity,
 same approach as `edh/redispatch_measures.py`); FCR/aFRR's `delivery_date`
-is UTC midnight.
+is UTC midnight -- but that's the *index* only, see the block-columns
+caveat directly below, it does not apply to `negpos_00_04` etc. themselves.
+
+**⚠️ FCR/aFRR block columns (`negpos_00_04`, `neg_00_04`, `pos_00_04`, ...)
+are German local clock time (CET/CEST), not UTC or a fixed 4-hour UTC
+span.** Confirmed via regelleistung.net's own FCR Cooperation
+documentation: "the duration of product delivery is usually 4 hours,
+**subject to daylight saving time shift**" -- i.e. on the two DST-transition
+days per year, one block is genuinely only 3 (spring) or 5 (autumn) real
+UTC hours long, not 4, because the block boundaries are pinned to German
+wall-clock hours, not to UTC. **Practical consequence: do not naively
+treat `negpos_08_12` as "08:00-12:00 UTC" or as a fixed-duration 4-hour
+UTC window when joining this against an hourly UTC series (e.g.
+`smard_price_de_lu`) or computing an energy-weighted average from the
+capacity price** -- convert the block's nominal CET/CEST hours to UTC for
+the specific `delivery_date` in question first (accounting for that day's
+actual CET/CEST offset), the same way `edh/rebap.py` and
+`edh/redispatch_measures.py` already do for their own per-row local-time
+fields. Verified against regelleistung.net's own market-design
+documentation for the shared FCR/aFRR "EFA block" structure and gate
+closure times (stated as `CET`/`CEST`, adjusting for DST) -- not
+independently re-derived by inspecting individual DST-transition rows in
+this hub's own downloaded files.
 
 **Units:** reBAP in EUR/MWh (an energy price); FCR/aFRR in EUR/MW/h (a
 capacity price, per hour of the 4h block) -- these are not
@@ -158,7 +180,9 @@ def _make_regelleistung_asset(asset_name: str, human_name: str, output_file_fn, 
             f"{human_name}, Germany, one row per delivery day, {columns_desc}, from regelleistung.net's public "
             "CRDS API (monthly RESULT_OVERVIEW Excel files). Idempotent, unpartitioned: each run always "
             "re-downloads and overwrites the current (potentially still-updating) month in full, then fills in "
-            "any fully-past months missing since the last materialization -- see module docstring."
+            "any fully-past months missing since the last materialization -- see module docstring. "
+            "⚠️ Block columns are CET/CEST (German local clock time), NOT UTC -- see 'block_timezone_warning' "
+            "metadata below before joining this against any UTC-indexed series."
         ),
         metadata={
             "source": "regelleistung.net CRDS API",
@@ -166,7 +190,18 @@ def _make_regelleistung_asset(asset_name: str, human_name: str, output_file_fn, 
             "region": "DE",
             "resolution": "daily (one row per delivery day; each column is a 4-hour delivery block)",
             "unit": "EUR/MW/h",
-            "timestamp_timezone": "naive, represents UTC midnight",
+            "timestamp_timezone": "index (delivery_date) is naive, represents UTC midnight -- the BLOCK COLUMNS do not, see below",
+            "block_timezone_warning": MetadataValue.md(
+                "**⚠️ `negpos_00_04`/`neg_00_04`/`pos_00_04` etc. are German local clock time (CET/CEST), not "
+                "UTC.** regelleistung.net's own FCR Cooperation documentation: block delivery duration is "
+                "\"usually 4 hours, subject to daylight saving time shift\" -- on the two DST-transition days "
+                "per year, one block is really only 3 (spring) or 5 (autumn) UTC hours, not 4, because the "
+                "block boundaries are pinned to German wall-clock hours. **Do not treat `..._08_12` as "
+                "\"08:00-12:00 UTC\"** when joining against an hourly-UTC series (e.g. `smard_price_de_lu`) or "
+                "computing an energy-weighted average -- convert each block's nominal CET/CEST hours to UTC "
+                "for that specific `delivery_date` first, the same way `edh/rebap.py` does for its own "
+                "per-row local-time field. See module docstring for sourcing."
+            ),
             "update_pattern": (
                 "data_derived_watermark: idempotent append, no partitions -- watermark is the first day of the "
                 "month containing the existing max date, so the current month is always re-fetched in full "
