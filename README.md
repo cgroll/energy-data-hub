@@ -59,11 +59,14 @@ edh/                  # plain Python package: HTTP clients, parsing, paths
   smard.py            # SMARD chart-API client (generation/load/price/capacity)
   smard_redispatch.py # SMARD's monthly redispatch-by-source CSV
   redispatch_measures.py  # netztransparenz.de per-measure redispatch export
+  rebap.py            # netztransparenz.de reBAP (balancing energy price)
+  regelleistung.py    # regelleistung.net FCR/aFRR capacity prices
   paths.py            # output file locations under data/
 edh_dagster/           # Dagster layer: asset defs
   assets/
     smard.py           # one asset per SMARD series (group "smard")
     redispatch.py       # SMARD-by-source + netztransparenz (group "redispatch")
+    balancing_market.py # reBAP + FCR/aFRR capacity prices (group "balancing_market")
   definitions.py         # Definitions() entry point (see pyproject.toml [tool.dagster])
 data/                   # not versioned (.gitignore) -- current-state outputs only
 ```
@@ -176,6 +179,21 @@ here, same shape as the `pecd-power-validity-DE` one.
   offshore unweighted, both from PECD's own zone geometry) has no
   equivalent problem -- it's a real per-country calculation, not a
   borrowed default.
+- **`rebap_price`'s publication lag isn't strictly monotonic.** Found
+  2026-09-30 while migrating this asset from `~/research/vpp-learning`: a
+  batch of days had come back `N.A.` ("quality-assured price not yet
+  published") on an earlier download, but had real values on a later
+  request -- *while newer days in between already had real values*. A
+  naive "only append what's after the last stored row" watermark would
+  have missed that gap forever. The asset works around this by always
+  re-fetching a trailing 14-day window every run (see
+  `edh_dagster/assets/balancing_market.py`), not by chasing the specific
+  gap -- cheap enough to just always do, and self-heals this whole class
+  of issue rather than one investigated instance of it.
+- **`fcr_capacity_price` is missing 2021-10-03** (German Unity Day, a
+  Sunday that year) -- confirmed directly against regelleistung.net's own
+  monthly source file, not a parsing bug here. Allowlisted in
+  `edh_dagster/checks/balancing_market.py::KNOWN_REGELLEISTUNG_GAPS`.
 
 ## Open questions / not decided yet
 

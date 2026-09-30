@@ -42,6 +42,12 @@ GAS_DIR = DATA_ROOT / "gas"
 # smard/ or pecd/, so kept in its own directory.
 KELMARSH_DIR = DATA_ROOT / "kelmarsh"
 
+# Balancing-market prices: reBAP (netztransparenz.de) + FCR/aFRR capacity
+# prices (regelleistung.net) -- a different mechanism from smard_price_*
+# (day-ahead auction) or gas/ (a commodity future), so kept in its own
+# directory rather than folded into smard/.
+BALANCING_MARKET_DIR = DATA_ROOT / "balancing_market"
+
 
 def smard_file(name: str) -> Path:
     """Path for one SMARD series, e.g. `smard_file("load")` ->
@@ -264,3 +270,29 @@ def kelmarsh_turbine_scada_file() -> Path:
     timestamp). See `edh/kelmarsh.py`."""
     KELMARSH_DIR.mkdir(parents=True, exist_ok=True)
     return KELMARSH_DIR / "kelmarsh_turbine_scada.parquet"
+
+
+def rebap_price_file() -> Path:
+    """German reBAP (balancing energy price), quarter-hourly, naive UTC,
+    columns `rebap_eur_mwh` / `rebap_ueberdeckt_eur_mwh`. See
+    `edh/rebap.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "rebap_price.parquet"
+
+
+def fcr_capacity_price_file() -> Path:
+    """FCR (PRL) settlement capacity price, Germany, daily (one row per
+    delivery day), one column per 4-hour block (`negpos_00_04` ...
+    `negpos_20_24`), EUR/MW/h, naive UTC-midnight index. See
+    `edh/regelleistung.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "fcr_capacity_price.parquet"
+
+
+def afrr_capacity_price_file() -> Path:
+    """aFRR (SRL) marginal capacity price, Germany, daily (one row per
+    delivery day), one column per direction x 4-hour block (`neg_00_04`
+    ... `pos_20_24`), EUR/MW/h, naive UTC-midnight index. See
+    `edh/regelleistung.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "afrr_capacity_price.parquet"
