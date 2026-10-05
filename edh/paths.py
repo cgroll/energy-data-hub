@@ -298,3 +298,30 @@ def afrr_capacity_price_file() -> Path:
     module docstring before using them."""
     BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
     return BALANCING_MARKET_DIR / "afrr_capacity_price.parquet"
+
+
+def nrv_saldo_file() -> Path:
+    """Germany-wide NRV-Saldo (Netzregelverbund-Saldo), quarter-hourly,
+    naive UTC, single `nrv_saldo_mw` column (positive = under-supplied,
+    negative = over-supplied). Known real gaps 2014-2022 -- see
+    `edh/nrv_saldo.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "nrv_saldo.parquet"
+
+
+def id_aep_file() -> Path:
+    """Germany-wide ID-AEP (Index Ausgleichsenergiepreis / "IP-Index"),
+    quarter-hourly, naive UTC, single `id_aep_eur_mwh` column (NaN where
+    undefined -- too little intraday trading volume). See `edh/id_aep.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "id_aep.parquet"
+
+
+def aep_modules_file() -> Path:
+    """Germany-wide AEP Module 1/2/3 (the three components reBAP is the
+    max/min of), quarter-hourly, naive UTC, columns
+    `aep_module1_eur_mwh`/`aep_module2_eur_mwh`/`aep_module3_eur_mwh` (NaN
+    where a module doesn't apply that quarter-hour). See
+    `edh/aep_modules.py`."""
+    BALANCING_MARKET_DIR.mkdir(parents=True, exist_ok=True)
+    return BALANCING_MARKET_DIR / "aep_modules.parquet"

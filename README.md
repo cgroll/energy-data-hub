@@ -60,13 +60,16 @@ edh/                  # plain Python package: HTTP clients, parsing, paths
   smard_redispatch.py # SMARD's monthly redispatch-by-source CSV
   redispatch_measures.py  # netztransparenz.de per-measure redispatch export
   rebap.py            # netztransparenz.de reBAP (balancing energy price)
+  nrv_saldo.py        # netztransparenz.de NRV-Saldo (system imbalance, MW)
+  id_aep.py           # netztransparenz.de ID-AEP / "IP-Index" (intraday price index)
+  aep_modules.py       # netztransparenz.de AEP Module 1/2/3 (reBAP's own published components)
   regelleistung.py    # regelleistung.net FCR/aFRR capacity prices
   paths.py            # output file locations under data/
 edh_dagster/           # Dagster layer: asset defs
   assets/
     smard.py           # one asset per SMARD series (group "smard")
     redispatch.py       # SMARD-by-source + netztransparenz (group "redispatch")
-    balancing_market.py # reBAP + FCR/aFRR capacity prices (group "balancing_market")
+    balancing_market.py # reBAP, NRV-Saldo, ID-AEP, AEP-Module, FCR/aFRR (group "balancing_market")
   definitions.py         # Definitions() entry point (see pyproject.toml [tool.dagster])
 data/                   # not versioned (.gitignore) -- current-state outputs only
 ```
@@ -211,6 +214,26 @@ here, same shape as the `pecd-power-validity-DE` one.
   the same way `edh/rebap.py` already does for its own per-row local-time
   field. See `edh/regelleistung.py`'s module docstring and the
   `block_timezone_warning` metadata on both assets in the Dagster UI.
+- **`aep_modules`' Module 3 column encodes "doesn't apply" two different,
+  inconsistent ways in the raw netztransparenz.de source -- not documented
+  by them anywhere, found empirically 2026-10-05.** Sometimes the raw cell
+  is `N.E.` (parsed as NaN like any `N.A.`-style placeholder); 99.93% of
+  the time it's instead a literal `0.0`. `edh/aep_modules.py` already
+  converts both to NaN before this hub's data ever reflects it, so
+  `aep_module3_eur_mwh` NaN correctly means "excluded from any
+  `max`/`min` across modules" throughout -- a consumer reading the raw
+  source directly without this fix gets reBAP's own calculation formula
+  wrong whenever the spurious zero wins the comparison (confirmed: it
+  dropped `energy-research`'s reBAP reconstruction from 99.99% to 89.6%
+  exact match before being found).
+- **`nrv_saldo` has real, multi-month gaps (NaN values in present rows, not
+  missing timestamps) in 2014/2015, 2016, 2018, and 2022** -- not a
+  download bug, confirmed against the source directly (see
+  `edh/nrv_saldo.py` module docstring). `nrv_saldo_gap_check`
+  (`edh_dagster/checks/balancing_market.py`) uses WARN severity rather
+  than this group's usual ERROR specifically because of this -- a found
+  gap here is expected background noise in this source's history, not
+  necessarily evidence of a bad run.
 
 ## Open questions / not decided yet
 
