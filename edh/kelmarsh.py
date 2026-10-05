@@ -4,8 +4,7 @@ validate PECD's onshore wind capacity factor (zone `UK03`, confirmed via
 `peon_region_mask.nc`) against actual generation -- see energy-insights'
 `page_kelmarsh_vs_pecd`.
 
-Migrated 2026-09-28 from `energy-research`'s exploratory prototype
-(`pipeline/01_download_kelmarsh.py` + `02_compare_kelmarsh_pecd.py`), which
+Migrated 2026-09-28 from `energy-research`'s exploratory prototype, which
 established there: zone UK03 as the right PECD zone for Kelmarsh's
 coordinates, that a naive PECD-vs-actual comparison lines up well
 (r=0.81 on monthly means over 2016-2021), and that most of the remaining

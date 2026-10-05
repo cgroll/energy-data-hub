@@ -24,10 +24,11 @@ as `edh/rebap.py` (see that module's docstring for the general mechanism),
 the "quality-assured" variant, matching reBAP's own choice (a near-real-
 time "betrieblich" variant also exists on the source page but isn't used
 here). `TsoIds=[0]` returns a single `Deutschland` column (the national
-aggregate), not a per-TSO breakdown. Migrated 2026-10-05 from
-`~/research/energy-research/pipeline/08_download_nrv_saldo.py`, which
-discovered this endpoint and validated it against reBAP (see that repo's
-`09_nrv_saldo_vs_rebap.py` and `20_rebap_exact_reconstruction.py`).
+aggregate), not a per-TSO breakdown. Found and validated against reBAP
+2026-10-05 in `energy-research`'s exploratory pipeline before being
+promoted here -- see that repo's `09_nrv_saldo_vs_rebap.py` for the
+original spread-vs-imbalance investigation, and `edh/aep_modules.py` for
+how NRV-Saldo feeds directly into reBAP's own published formula.
 
 **Availability confirmed empirically:** earliest data 2014-01-01 (server
 silently clips anything requested before that, same cutoff as reBAP, both

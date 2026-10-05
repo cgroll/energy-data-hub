@@ -22,9 +22,9 @@ built as `ID-AEP +/- a minimum distance`.
 
 **Source mechanism**, same `CsvDownloadHandler.ashx` LotesCharts endpoint
 as `edh/rebap.py` (see that module's docstring for the general mechanism),
-`ProduktId=0` / `WebApiRoute="IdAep"` / `DataType=30`. Migrated 2026-10-05
-from `~/research/energy-research/pipeline/15_download_id_aep.py`, which
-discovered this endpoint.
+`ProduktId=0` / `WebApiRoute="IdAep"` / `DataType=30`, found 2026-10-05
+by reading the "Index Ausgleichsenergiepreis" page's own inline chart
+config.
 
 **Availability confirmed empirically:** earliest data 2020-07-01 00:00
 local (CEST) -- the server's own error message for anything before that is

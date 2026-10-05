@@ -25,12 +25,12 @@ Model description", in force since 2023-11-01) builds reBAP as
 **Source mechanism**, same `CsvDownloadHandler.ashx` LotesCharts endpoint
 as `edh/rebap.py`, found by reading the "AEP-Module" overview page's own
 inline chart config: `ProduktId=27` /
-`WebApiRoute="NrvSaldo/AEPModule/Qualitaetsgesichert"`. Migrated 2026-10-05
-from `~/research/energy-research/pipeline/19_download_aep_modules.py`,
-which discovered this endpoint and validated the full
-`max`/`min(Module1,2,3)` formula against real reBAP (see that repo's
-`20_rebap_exact_reconstruction.py`: 99.99% exact match once the Module-3
-quirk below is corrected).
+`WebApiRoute="NrvSaldo/AEPModule/Qualitaetsgesichert"`. Found and
+validated 2026-10-05 in `energy-research`'s exploratory pipeline before
+being promoted here: the full `max`/`min(Module1,2,3)` formula
+reconstructs real reBAP to a 99.99% exact match once the Module-3 quirk
+below is corrected -- see `energy-insights`' `page_rebap_formula_reconstruction`
+for that reconstruction, rebuilt against this hub's own assets.
 
 **Availability confirmed empirically:** earliest data 2022-06-22 00:00
 local (CEST) -- consistent with the module-based reBAP methodology taking
@@ -57,10 +57,9 @@ parabola). **This module converts exact 0.0 to NaN for `aep_module3_eur_mwh`
 before returning** -- without that fix, a consumer naively computing
 `max`/`min(module1, module2, module3)` gets the wrong answer whenever the
 spurious zero wins (it very often does, since module1/2 are typically far
-from zero): confirmed empirically in `energy-research`'s
-`20_rebap_exact_reconstruction.py`, where this exact bug dropped the
-reconstruction's match rate from 99.99% to 89.6% before being found and
-fixed.
+from zero): confirmed empirically while prototyping this reconstruction --
+this exact bug dropped the match rate from 99.99% to 89.6% before being
+found and fixed.
 """
 
 import base64

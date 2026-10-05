@@ -5,16 +5,15 @@ FCR/aFRR capacity prices (regelleistung.net).
 reBAP/FCR/aFRR migrated 2026-09-30 from ~/research/vpp-learning (which
 already had these downloaded and validated -- see `edh/rebap.py` /
 `edh/regelleistung.py` for the source-mechanism provenance). NRV-Saldo,
-ID-AEP, and AEP Module 1/2/3 migrated 2026-10-05 from
-`~/research/energy-research` (`pipeline/08_download_nrv_saldo.py`,
-`15_download_id_aep.py`, `19_download_aep_modules.py`), which discovered
-each endpoint and validated the full picture: `max`/`min(Module1, Module2,
-Module3)` reconstructs real reBAP to 99.99% exact match (see
-`energy-research`'s `20_rebap_exact_reconstruction.py`) -- so this hub now
-has every piece of reBAP's own published calculation formula, not just the
-final price. All physically distinct from `smard_price_*` (SMARD's
-day-ahead auction price) -- these are the imbalance-settlement side of the
-market -- hence their own asset group rather than folding into `smard`.
+ID-AEP, and AEP Module 1/2/3 found and validated 2026-10-05 in
+`energy-research`'s exploratory pipeline before being promoted here: the
+full picture, `max`/`min(Module1, Module2, Module3)`, reconstructs real
+reBAP to a 99.99% exact match (see `energy-insights`'
+`page_rebap_formula_reconstruction`) -- so this hub now has every piece of
+reBAP's own published calculation formula, not just the final price. All
+physically distinct from `smard_price_*` (SMARD's day-ahead auction price)
+-- these are the imbalance-settlement side of the market -- hence their
+own asset group rather than folding into `smard`.
 
 **Load pattern: `data_derived_watermark`** for all six, same shape as
 the `smard`/`gas` groups (see `docs/load_patterns.md`): each run reads its
@@ -333,7 +332,7 @@ aep_modules = _make_netztransparenz_watermark_asset(
         "reBAP is the max (short)/min (long) of: Module 1 (real PICASSO/MARI aFRR/mFRR activation prices), "
         "Module 2 (ID-AEP +/- a minimum distance, see `id_aep`), Module 3 (scarcity component, active only "
         "above 80% of dimensioned FRR capacity). Together with `nrv_saldo` and `id_aep`, this reconstructs real "
-        "reBAP to 99.99% exact match (energy-research's `20_rebap_exact_reconstruction.py`). Idempotent, "
+        "reBAP to 99.99% exact match (see energy-insights' page_rebap_formula_reconstruction). Idempotent, "
         "unpartitioned: re-fetches a trailing 14-day window every run (same settlement pipeline/lag as reBAP). "
         "⚠️ `aep_module3_eur_mwh`'s raw 0.0-means-inactive quirk is already corrected to NaN -- see "
         "`edh/aep_modules.py` module docstring."
