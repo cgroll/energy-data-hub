@@ -316,6 +316,17 @@ def era5_de_precipitation_hourly_file() -> Path:
     return ERA5_DIR / "era5_de_precipitation_hourly_1991_2020.parquet"
 
 
+ERA5_GRID_DIR = DATA_ROOT / "era5_grid"
+
+
+def era5_grid_month_file(year: int, month: int) -> Path:
+    """One month of the full ERA5 reanalysis grid (Germany+offshore bbox,
+    0.25 deg, hourly) -- columns `cell_lon`, `cell_lat`, `valid_time`,
+    `u100`, `v100`, `u10`, `v10`, `t2m`, `ssrd`. See `edh/era5_grid.py`."""
+    ERA5_GRID_DIR.mkdir(parents=True, exist_ok=True)
+    return ERA5_GRID_DIR / f"era5_grid_{year}_{month:02d}.parquet"
+
+
 def kelmarsh_wt_static_file() -> Path:
     """Per-turbine static specs for Kelmarsh wind farm's 6 Senvion MM92
     units: coordinates, rated power, hub height, rotor diameter,
