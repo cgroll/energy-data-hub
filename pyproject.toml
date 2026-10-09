@@ -19,6 +19,7 @@ dependencies = [
     "geopandas>=1.0.0",
     "shapely>=2.0.0",
     "yfinance>=0.2.40",
+    "earthengine-api>=1.7.47",
 ]
 
 [build-system]

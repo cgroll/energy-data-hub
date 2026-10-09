@@ -1,5 +1,6 @@
 from edh_dagster.assets.balancing_market import balancing_market_assets
 from edh_dagster.assets.capacity import capacity_assets
+from edh_dagster.assets.era5_climatology import era5_climatology_assets
 from edh_dagster.assets.gas import gas_assets
 from edh_dagster.assets.kelmarsh import kelmarsh_assets
 from edh_dagster.assets.mastr import mastr_assets
@@ -16,4 +17,5 @@ all_assets = [
     *gas_assets,
     *kelmarsh_assets,
     *balancing_market_assets,
+    *era5_climatology_assets,
 ]

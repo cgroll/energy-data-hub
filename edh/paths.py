@@ -285,6 +285,37 @@ def de_capacity_factors_fleet_weighted_file() -> Path:
     return PECD_DIR / "de_capacity_factors_fleet_weighted.parquet"
 
 
+ERA5_DIR = DATA_ROOT / "era5_climatology"
+
+
+def era5_de_temperature_hourly_file() -> Path:
+    """ERA5-Land hourly Germany spatial-average 2 m temperature, one row per
+    real UTC hour, 1991-01-01 to 2021-01-01 (262,992 hours). Columns
+    `timestamp` + `avg_de_2m_temp` (deg C). Spatial averaging only, no
+    temporal/climatology aggregation -- that's a downstream step from this
+    base series, see `edh/era5_climatology.py`."""
+    ERA5_DIR.mkdir(parents=True, exist_ok=True)
+    return ERA5_DIR / "era5_de_temperature_hourly_1991_2020.parquet"
+
+
+def era5_de_wind_speed_hourly_file() -> Path:
+    """Same base-data pattern as the temperature file above, but for 10 m
+    wind speed (m/s): one row per real UTC hour, 1991-2020, columns
+    `timestamp` + `avg_de_wind_speed_10m`. Computed from ERA5-Land's
+    `u_component_of_wind_10m` / `v_component_of_wind_10m`, combined into
+    speed *per pixel* before the Germany spatial average."""
+    ERA5_DIR.mkdir(parents=True, exist_ok=True)
+    return ERA5_DIR / "era5_de_wind_speed_hourly_1991_2020.parquet"
+
+
+def era5_de_precipitation_hourly_file() -> Path:
+    """Same base-data pattern again, for precipitation (mm): one row per
+    real UTC hour, 1991-2020, columns `timestamp` + `avg_de_precipitation_mm`.
+    Straight from ERA5-Land's `total_precipitation_hourly` band."""
+    ERA5_DIR.mkdir(parents=True, exist_ok=True)
+    return ERA5_DIR / "era5_de_precipitation_hourly_1991_2020.parquet"
+
+
 def kelmarsh_wt_static_file() -> Path:
     """Per-turbine static specs for Kelmarsh wind farm's 6 Senvion MM92
     units: coordinates, rated power, hub height, rotor diameter,
