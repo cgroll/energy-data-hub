@@ -65,7 +65,7 @@ follow-up decision, not silently allowlisted:**
   tied to `PRICE_PL2` existing as a parallel/successor series (unconfirmed).
   Needs a different documentation approach (e.g. asset-level metadata
   describing the range) rather than a `KNOWN_GAPS` entry.
-- `smard_forecast_other`: recurring ~1-month gaps landing in the same
+- `smard_forecast_residual_load`: recurring ~1-month gaps landing in the same
   Sept/Oct-Dec window across multiple years (2018, 2023, 2024), plus dense
   scattered micro-gaps throughout Oct 2023 -- confirmed genuinely absent at
   source, but the recurring annual pattern isn't root-caused.
@@ -75,10 +75,10 @@ follow-up decision, not silently allowlisted:**
   2026-09-19..21) -- confirmed genuinely absent at source, and the
   cross-series correlation suggests one shared SMARD-side event per
   window, not independent per-series noise.
-- `smard_forecast_total`: several multi-day blocks landing right around
+- `smard_forecast_load`: several multi-day blocks landing right around
   the Sept/Oct month boundary and DST weekend in both 2023 and 2024 (e.g.
   2023-09-30..10-01, 2024-09-30..10-06), plus one Dec-30/31 2024 block --
-  same recurring-annual-window character as `smard_forecast_other`, not
+  same recurring-annual-window character as `smard_forecast_residual_load`, not
   root-caused, not allowlisted.
 
 Add an entry here only after directly confirming the value is null/absent
