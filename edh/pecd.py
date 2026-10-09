@@ -642,3 +642,104 @@ def solar_nuts2_wide(monthly_panel: pd.DataFrame, column_names: list[str]) -> pd
     wide = monthly_panel.pivot_table(index="month", columns=["pecd_technology", "nuts2_region"], values="capacity_mw", fill_value=0.0)
     wide.columns = wide.columns.set_names(column_names)
     return wide
+
+
+# --- Fleet-weighted DE output: base series + fleet-weight snapshot, kept --
+# deliberately separate (2026-10-09 design conversation) -- MaStR's fleet
+# changes constantly (new installs, decommissions), so baking "today's"
+# mix/capacity directly into the long capacity-factor computation would
+# silently change the *climatology's* meaning every time MaStR refreshes,
+# and would force recomputing the expensive PECD/area-weighting step just
+# to look at a different fleet vintage. Splitting into three pieces avoids
+# both: `de_technology_capacity_factors` (no MaStR at all, stable), a small
+# timestamped `de_fleet_weights_snapshot`, and `blend_fleet_weighted_cf` as
+# a pure function that combines a base frame with *any* snapshot.
+#
+# This sits between the hub's two existing DE products in how much MaStR
+# detail it uses: `pecd_country_capacity_factors_simple_de` uses *no*
+# MaStR at all for solar (hand-sourced external market weights); this one
+# uses MaStR, but only as one nationwide technology-mix percentage, not
+# `de_capacity_factor_current_fleet`'s real per-NUTS2/per-zone plant-level
+# detail. See `energy-insights/pages/06_pecd_simple_vs_mastr_weighted.py`
+# for a three-way comparison of all three.
+
+def de_technology_capacity_factors() -> pd.DataFrame:
+    """Germany-wide hourly capacity factor (0-1), six columns, full PECD
+    history (1980-2025) -- zero MaStR dependency. Solar: PECD's four
+    official country-level technologies, unblended (real official product,
+    not derived here). Wind: area-weighted mean of PECD's own zones (PEON
+    onshore, P2OF offshore) -- same geometry-only methodology as
+    `country_area_weighted_wind_cf`, restricted to DE, not yet blended with
+    any technology-mix weight."""
+    solar_wide = load_europe_solar_capacity_factors()
+    solar_de = pd.DataFrame({
+        f"solar_{t}": solar_wide[(t, "DE")] for t in SOLAR_TECHNOLOGIES if (t, "DE") in solar_wide.columns
+    })
+
+    onshore_cf = load_europe_capacity_factors("wind_onshore", "30")
+    onshore_de_cols = [c for c in onshore_cf.columns if c.startswith("DE")]
+    onshore = country_area_weighted_wind_cf(onshore_cf[onshore_de_cols], pecd_mask_file("peon"))["DE"].rename("wind_onshore")
+
+    offshore_cf = load_europe_capacity_factors("wind_offshore", "20")
+    offshore_de_cols = [c for c in offshore_cf.columns if c.startswith("DE")]
+    offshore = country_area_weighted_wind_cf(offshore_cf[offshore_de_cols], pecd_mask_file("p2of"))["DE"].rename("wind_offshore")
+
+    # join="inner": solar's index carries its own -1h UTC correction (see
+    # load_europe_solar_capacity_factors), wind's doesn't -- an outer join
+    # would leave dangling hours with only one side populated at each end,
+    # same reasoning as pecd_country_capacity_factors_simple's own join.
+    return pd.concat([solar_de, onshore, offshore], axis=1, join="inner").sort_index()
+
+
+def de_fleet_weights_snapshot(as_of: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Today's (or `as_of`'s) real MaStR fleet snapshot: the four solar
+    technology-mix weights (sum to 1) and total installed MW for solar,
+    wind onshore, and wind offshore -- one-row DataFrame, kept deliberately
+    separate from `de_technology_capacity_factors`'s long series (see
+    module comment above)."""
+    as_of = as_of or pd.Timestamp.today().normalize()
+
+    wind = pd.read_parquet(mastr_units_file("wind"))
+    solar = pd.read_parquet(mastr_units_file("solar"))
+    detail = pd.read_parquet(mastr_solar_technical_detail_file())
+    lau_nuts = pd.read_parquet(lau_nuts_correspondence_file())
+
+    onshore, offshore = prep_wind_units(wind)
+    solar_prepped = prep_solar_units(solar, detail, lau_nuts)
+
+    onshore_mw = float(active_units_at(onshore, as_of)["capacity_mw"].sum())
+    offshore_mw = float(active_units_at(offshore, as_of)["capacity_mw"].sum())
+    solar_active = active_units_at(solar_prepped, as_of)
+    solar_mw = float(solar_active["capacity_mw"].sum())
+    tech_mw = solar_active.groupby("pecd_technology")["capacity_mw"].sum()
+    tech_weights = (tech_mw / tech_mw.sum()).reindex(SOLAR_TECHNOLOGIES, fill_value=0.0)
+
+    row = {f"solar_weight_{t}": tech_weights[t] for t in SOLAR_TECHNOLOGIES}
+    row.update({
+        "solar_total_mw": solar_mw,
+        "wind_onshore_total_mw": onshore_mw,
+        "wind_offshore_total_mw": offshore_mw,
+        "as_of": as_of,
+    })
+    return pd.DataFrame([row])
+
+
+def blend_fleet_weighted_cf(base: pd.DataFrame, weights: pd.Series) -> pd.DataFrame:
+    """Apply one `de_fleet_weights_snapshot` row to `de_technology_capacity_factors`'s
+    six-column base: blend solar's 4 technologies by the snapshot's
+    technology-mix weights, pass wind through unchanged (already a single
+    series each), then scale all three by the snapshot's total MW to also
+    get absolute power plus their sum. Pure function -- call it again with
+    a different snapshot to see a different fleet vintage, without
+    recomputing `base`."""
+    solar_cf = sum(base[f"solar_{t}"] * weights[f"solar_weight_{t}"] for t in SOLAR_TECHNOLOGIES)
+    out = pd.DataFrame({
+        "capacity_factor_solar": solar_cf,
+        "capacity_factor_wind_onshore": base["wind_onshore"],
+        "capacity_factor_wind_offshore": base["wind_offshore"],
+    })
+    out["power_mw_solar"] = out["capacity_factor_solar"] * weights["solar_total_mw"]
+    out["power_mw_wind_onshore"] = out["capacity_factor_wind_onshore"] * weights["wind_onshore_total_mw"]
+    out["power_mw_wind_offshore"] = out["capacity_factor_wind_offshore"] * weights["wind_offshore_total_mw"]
+    out["power_mw_total"] = out["power_mw_solar"] + out["power_mw_wind_onshore"] + out["power_mw_wind_offshore"]
+    return out

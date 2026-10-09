@@ -55,9 +55,12 @@ from edh.pecd import (
     CF_REQUESTS,
     EUROPE_DECADES,
     SOLAR_TECHNOLOGIES,
+    blend_fleet_weighted_cf,
     capacity_snapshot,
     compute_potential_fixed,
     compute_potential_monthly,
+    de_fleet_weights_snapshot,
+    de_technology_capacity_factors,
     download_and_convert_europe_decade,
     download_capacity_factor_zip,
     load_europe_capacity_factors,
@@ -652,6 +655,145 @@ def de_capacity_factor_current_fleet(context: AssetExecutionContext) -> None:
     )
 
 
+@asset(
+    deps=[
+        "pecd_wind_onshore_europe_capacity_factors",
+        "pecd_wind_offshore_europe_capacity_factors",
+        "pecd_solar_europe_capacity_factors",
+        "peon_region_mask",
+        "peof_region_mask",
+    ],
+    group_name="de_potential",
+    kinds={"parquet"},
+    tags=_PECD_TAGS,
+    description=(
+        "Germany-wide hourly capacity factor (0-1), six columns, full PECD history "
+        "(1980-2025), zero MaStR dependency -- the stable base "
+        "`de_capacity_factors_fleet_weighted` blends on top of. Solar's four "
+        "official PECD technologies left unblended; wind onshore/offshore each "
+        "area-weighted down to one series already (PEON/P2OF zone geometry, no "
+        "MaStR). Kept deliberately separate from any fleet-weight snapshot -- see "
+        "`edh/pecd.py` module comment for why (2026-10-09 design conversation)."
+    ),
+    metadata={
+        "source": "Derived from the three PECD europe capacity-factor assets + zone area masks",
+        "source_url": MetadataValue.url(CDS_SOURCE_URL),
+        "region": "DE only",
+        "resolution": "hourly, 1980-2025",
+        "unit": "capacity factor (0-1, dimensionless)",
+        "timestamp_timezone": "naive, represents UTC",
+        "update_pattern": "full_refresh, no MaStR dependency so this rarely needs rebuilding",
+    },
+)
+def de_technology_capacity_factors_asset(context: AssetExecutionContext) -> None:
+    from edh.paths import de_technology_capacity_factors_file
+
+    base = de_technology_capacity_factors()
+    output_file = de_technology_capacity_factors_file()
+    base.to_parquet(output_file)
+
+    context.add_output_metadata(
+        {
+            "dagster/row_count": len(base),
+            "path": MetadataValue.path(str(output_file)),
+            "min_timestamp": MetadataValue.text(str(base.index.min())) if len(base) else MetadataValue.text("n/a"),
+            "max_timestamp": MetadataValue.text(str(base.index.max())) if len(base) else MetadataValue.text("n/a"),
+            "preview": MetadataValue.md(base.tail(3).to_markdown()) if len(base) else MetadataValue.md("*empty*"),
+        }
+    )
+
+
+@asset(
+    deps=["mastr_units_wind", "mastr_units_solar", "mastr_solar_technical_detail", "lau_nuts_correspondence"],
+    group_name="de_potential",
+    kinds={"parquet"},
+    tags=_PECD_TAGS,
+    description=(
+        "One-row timestamped snapshot of today's real MaStR fleet: the four solar "
+        "technology-mix weights (sum to 1) and total installed MW for solar/"
+        "wind-onshore/wind-offshore. Kept separate from "
+        "`de_technology_capacity_factors`'s long series on purpose -- MaStR's "
+        "fleet changes constantly, so a different vintage can be substituted via "
+        "`edh/pecd.py::blend_fleet_weighted_cf` without recomputing the PECD side."
+    ),
+    metadata={
+        "source": "Derived from MaStR wind/solar units, as of materialization time",
+        "region": "DE",
+        "resolution": "single snapshot, see as_of_date metadata",
+        "unit": "weights (0-1, sum to 1 across the 4 solar technologies) + MW",
+        "update_pattern": "full_refresh -- re-materialize to get a fresh fleet vintage",
+    },
+)
+def de_fleet_weights_snapshot_asset(context: AssetExecutionContext) -> None:
+    from edh.paths import de_fleet_weights_snapshot_file
+
+    snapshot = de_fleet_weights_snapshot()
+    output_file = de_fleet_weights_snapshot_file()
+    snapshot.to_parquet(output_file, index=False)
+
+    context.add_output_metadata(
+        {
+            "path": MetadataValue.path(str(output_file)),
+            "as_of_date": MetadataValue.text(str(snapshot["as_of"].iloc[0].date())),
+            "preview": MetadataValue.md(snapshot.to_markdown(index=False)),
+        }
+    )
+
+
+@asset(
+    deps=["de_technology_capacity_factors_asset", "de_fleet_weights_snapshot_asset"],
+    group_name="de_potential",
+    kinds={"parquet"},
+    tags=_PECD_TAGS,
+    description=(
+        "`de_technology_capacity_factors` blended with `de_fleet_weights_snapshot`: "
+        "solar's four PECD technologies combined using today's real MaStR "
+        "technology mix (not external market weights like "
+        "`pecd_country_capacity_factors_simple_de`, not full NUTS2/zone-fraction "
+        "detail like `de_capacity_factor_current_fleet`), wind passed through "
+        "unchanged. Produces both capacity factor (0-1) and absolute power (MW, "
+        "scaled by the snapshot's total MW) plus their sum. See "
+        "`energy-insights/pages/06_pecd_simple_vs_mastr_weighted.py` for how all "
+        "three DE products compare against each other."
+    ),
+    metadata={
+        "source": "Derived: de_technology_capacity_factors x de_fleet_weights_snapshot",
+        "region": "DE",
+        "resolution": "hourly, 1980-2025 (capacity-factor columns); power columns use one fixed MW snapshot",
+        "unit": "capacity_factor_* (0-1); power_mw_* (MW)",
+        "timestamp_timezone": "naive, represents UTC",
+        "update_pattern": "full_refresh, rebuilt whenever either upstream asset changes; fleet snapshot dated in as_of_date metadata",
+    },
+)
+def de_capacity_factors_fleet_weighted(context: AssetExecutionContext) -> None:
+    from edh.paths import (
+        de_fleet_weights_snapshot_file,
+        de_technology_capacity_factors_file,
+        de_capacity_factors_fleet_weighted_file,
+    )
+
+    base = pd.read_parquet(de_technology_capacity_factors_file())
+    snapshot = pd.read_parquet(de_fleet_weights_snapshot_file()).iloc[0]
+
+    combined = blend_fleet_weighted_cf(base, snapshot)
+    output_file = de_capacity_factors_fleet_weighted_file()
+    combined.to_parquet(output_file)
+
+    context.add_output_metadata(
+        {
+            "dagster/row_count": len(combined),
+            "path": MetadataValue.path(str(output_file)),
+            "as_of_date": MetadataValue.text(str(snapshot["as_of"].date())),
+            "fleet_mw": MetadataValue.md(
+                f"| technology | MW |\n|---|---|\n| solar | {snapshot['solar_total_mw']:,.0f} |\n"
+                f"| wind_onshore | {snapshot['wind_onshore_total_mw']:,.0f} |\n"
+                f"| wind_offshore | {snapshot['wind_offshore_total_mw']:,.0f} |"
+            ),
+            "preview": MetadataValue.md(combined.tail(3).to_markdown()) if len(combined) else MetadataValue.md("*empty*"),
+        }
+    )
+
+
 pecd_assets = [
     lau_nuts_correspondence,
     peon_region_mask,
@@ -667,4 +809,7 @@ pecd_assets = [
     pecd_country_capacity_factors_simple_de,
     de_potential_historic,
     de_capacity_factor_current_fleet,
+    de_technology_capacity_factors_asset,
+    de_fleet_weights_snapshot_asset,
+    de_capacity_factors_fleet_weighted,
 ]

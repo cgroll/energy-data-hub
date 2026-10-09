@@ -247,6 +247,44 @@ def de_capacity_factor_current_fleet_file() -> Path:
     return PECD_DIR / "de_capacity_factor_current_fleet.parquet"
 
 
+def de_technology_capacity_factors_file() -> Path:
+    """Germany-wide hourly capacity factor (0-1), six columns, full
+    downloaded PECD history (1980-2025), zero MaStR dependency -- the
+    stable "base" layer `de_capacity_factors_fleet_weighted` is built on
+    top of. Columns: `solar_60`/`solar_61`/`solar_62`/`solar_63` (PECD's
+    four official country-level solar technologies, unblended),
+    `wind_onshore` (area-weighted PEON zone mean), `wind_offshore`
+    (area-weighted P2OF zone mean). Deliberately kept separate from any
+    fleet-weight snapshot -- see `edh/pecd.py::de_technology_capacity_factors`."""
+    PECD_DIR.mkdir(parents=True, exist_ok=True)
+    return PECD_DIR / "de_technology_capacity_factors.parquet"
+
+
+def de_fleet_weights_snapshot_file() -> Path:
+    """One-row snapshot of today's real MaStR fleet: the four solar
+    technology-mix weights (sum to 1) and total installed MW for solar/
+    wind-onshore/wind-offshore, tagged with the `as_of` date it was
+    computed from -- kept separate from the long capacity-factor series on
+    purpose, so a different fleet vintage can be substituted later without
+    recomputing the PECD side. See `edh/pecd.py::de_fleet_weights_snapshot`."""
+    PECD_DIR.mkdir(parents=True, exist_ok=True)
+    return PECD_DIR / "de_fleet_weights_snapshot.parquet"
+
+
+def de_capacity_factors_fleet_weighted_file() -> Path:
+    """`de_technology_capacity_factors` + `de_fleet_weights_snapshot`
+    combined: solar's four technologies blended by today's real MaStR
+    technology mix (not NUTS2/zone-fraction detail -- see
+    `de_capacity_factor_current_fleet` for that finer product), wind
+    columns passed through unchanged. Columns: `capacity_factor_solar`/
+    `capacity_factor_wind_onshore`/`capacity_factor_wind_offshore` (0-1),
+    `power_mw_solar`/`power_mw_wind_onshore`/`power_mw_wind_offshore`
+    (capacity factor x today's real MaStR MW), `power_mw_total` (sum of
+    the three power columns). See `edh/pecd.py::blend_fleet_weighted_cf`."""
+    PECD_DIR.mkdir(parents=True, exist_ok=True)
+    return PECD_DIR / "de_capacity_factors_fleet_weighted.parquet"
+
+
 def kelmarsh_wt_static_file() -> Path:
     """Per-turbine static specs for Kelmarsh wind farm's 6 Senvion MM92
     units: coordinates, rated power, hub height, rotor diameter,
